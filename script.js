@@ -1,30 +1,20 @@
 /**
- * IMPLEMENTACIÓN API SHAPESPARK - ACTUALIZADO
- * Incluye Joystick personalizado tipo D-PAD (120px) con flechas direccionales.
+ * IMPLEMENTACIÓN API SHAPESPARK - VERSIÓN DEBUG D-PAD
+ * Verificación de carga: Abre la consola (F12) y busca "JOYSTICK v2"
  */
 document.addEventListener("DOMContentLoaded", () => {
-    let viewer = null
-    // =================================================================
-    // FACTOR GLOBAL DE INTENSIDAD DE COLOR (COLOR MANAGEMENT)
-    // =================================================================
+    console.log("🚀 Script principal cargado.");
+    let viewer = null;
     const GLOBAL_COLOR_INTENSITY = 0.5;
-    // =================================================================
-    // CONFIGURACIÓN DE ZONAS
-    // =================================================================
     const ZONES_CONFIG = [
         {
-            // --- ZONA SALA ---
             panelHtmlId: "container-sala",
             triggerViews: ["panel_sala", "sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
-            materials: [
-                "*40", "*50", "*60", "*70", "*80",
-                "Aluminio", "mesita sala", "*30", "arte cuadro 2", "Concrete Bare Cast Murral"
-            ],
+            materials: ["*40", "*50", "*60", "*70", "*80", "Aluminio", "mesita sala", "*30", "arte cuadro 2", "Concrete Bare Cast Murral"],
             sliderViews: ["sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
             viewLabels: ["10%", "40%", "60%", "80%", "100%"]
         },
         {
-            // --- ZONA COCINA ---
             panelHtmlId: "container-cocina",
             triggerViews: ["panel_cocina", "cocina_diez", "cocina_cuarenta", "cocina_sesenta", "cocina_ochenta", "cocina_cien"],
             materials: ["Material_Cocina_Encimera", "Material_Cocina_Luz"],
@@ -32,7 +22,6 @@ document.addEventListener("DOMContentLoaded", () => {
             viewLabels: ["10%", "40%", "60%", "80%", "100%"]
         },
         {
-            // --- ZONA CUARTO ---
             panelHtmlId: "container-cuarto",
             triggerViews: ["panel_cuarto", "cuarto_diez", "cuarto_cuarenta", "cuarto_sesenta", "cuarto_ochenta", "cuarto_cien"],
             materials: ["Material_Cama", "Material_Lampara_Cuarto"],
@@ -40,565 +29,265 @@ document.addEventListener("DOMContentLoaded", () => {
             viewLabels: ["10%", "40%", "60%", "80%", "100%"]
         }
     ];
-    // Configuración de Temperaturas (AHORA CON CANAL L - Luminosidad)
-    // 0.5 es el valor neutro. >0.5 es más brillante, <0.5 es más oscuro.
     const temperatureSettings = {
-        2700: { h: 0.016, s: 0.165, l: 0.48 }, // Un toque sutilmente más tenue para calidez
-        3000: { h: 0.028, s: 0.11, l: 0.50 }, // Neutro
-        4000: { h: 0.04, s: 0.03, l: 0.52 }, // Ligeramente más brillante
-        6000: { h: 0.06, s: -0.19, l: 0.52 }, // Brillo incrementado para luz día
-        6500: { h: 0.068, s: -0.265, l: 0.555 }, // Brillo máximo para luz fría intensa
+        2700: { h: 0.016, s: 0.165, l: 0.48 },
+        3000: { h: 0.028, s: 0.11, l: 0.50 },
+        4000: { h: 0.04, s: 0.03, l: 0.52 },
+        6000: { h: 0.06, s: -0.19, l: 0.52 },
+        6500: { h: 0.068, s: -0.265, l: 0.555 },
     }
     const originalMaterialStates = {}
-    // =================================================================
-    // DIAGNÓSTICO
-    // =================================================================
-    const logAllAvailableMaterials = () => {
-        console.group("📋 LISTA DE MATERIALES CONFIGURADOS VS ENCONTRADOS");
-        ZONES_CONFIG.forEach(zone => {
-            console.log(`--- Zona: ${zone.panelHtmlId} ---`);
-            zone.materials.forEach(matName => {
-                const mat = viewer.findMaterial(matName);
-                if (mat) console.log(`✅ ENCONTRADO: "${matName}"`);
-                else console.log(`❌ NO ENCONTRADO: "${matName}"`);
-            });
-        });
-        console.groupEnd();
-    };
-    // =================================================================
-    // LÓGICA DE PANELES Y UI
-    // =================================================================
-    const updatePanelVisibility = (currentViewName) => {
-        let activeZone = null;
-        ZONES_CONFIG.forEach(zone => {
-            const normalizedTriggerViews = zone.triggerViews.map(v => v.toLowerCase());
-            if (normalizedTriggerViews.includes(currentViewName.toLowerCase())) {
-                activeZone = zone;
-            }
-        });
-        document.querySelectorAll('.control-panel').forEach(panel => {
-            panel.style.display = 'none';
-        });
-        if (activeZone) {
-            const panelEl = document.getElementById(activeZone.panelHtmlId);
-            if (panelEl) {
-                panelEl.style.display = 'block';
-            }
-        }
-    };
-    // =================================================================
-    // LÓGICA DE MATERIALES
-    // =================================================================
     const storeOriginalMaterialStates = () => {
         try {
             const allMaterials = new Set();
-            ZONES_CONFIG.forEach(zone => {
-                zone.materials.forEach(mat => allMaterials.add(mat));
-            });
+            ZONES_CONFIG.forEach(zone => zone.materials.forEach(mat => allMaterials.add(mat)));
             allMaterials.forEach((materialName) => {
                 const material = viewer.findMaterial(materialName)
                 if (material) {
                     const hsl = material.baseColor.getHSL()
-                    let texture = null
-                    if (material.baseColorTexture) {
-                        texture = material.baseColorTexture
-                    }
                     originalMaterialStates[materialName] = {
-                        h: Number.parseFloat(hsl.h),
-                        s: Number.parseFloat(hsl.s),
-                        l: Number.parseFloat(hsl.l),
-                        texture: texture,
+                        h: Number.parseFloat(hsl.h), s: Number.parseFloat(hsl.s), l: Number.parseFloat(hsl.l),
+                        texture: material.baseColorTexture || null
                     }
                 }
-            })
-            console.log("Estados originales guardados.");
-        } catch (error) {
-            console.error("Error al guardar estados originales:", error)
-        }
+            });
+        } catch (e) { console.error("Error original materials:", e); }
     }
     const applyTemperatureToZone = (zoneConfig, temperature) => {
-        try {
-            const tempConfig = temperatureSettings[temperature];
-            if (!tempConfig) return;
-            // AHORA USAMOS LA LUMINOSIDAD ESPECÍFICA O 0.5 POR DEFECTO
-            const targetL = tempConfig.l !== undefined ? tempConfig.l : 0.5;
-            const adjustedSaturation = tempConfig.s * GLOBAL_COLOR_INTENSITY;
-            zoneConfig.materials.forEach((materialName) => {
-                const material = viewer.findMaterial(materialName);
-                if (material) {
-                    if (material.baseColorTexture) {
-                        material.setTextureMapHslAdjustment("baseColorTexture", "h", tempConfig.h);
-                        material.setTextureMapHslAdjustment("baseColorTexture", "s", adjustedSaturation);
-                        // Usamos el canal L dinámico
-                        material.setTextureMapHslAdjustment("baseColorTexture", "l", targetL);
-                        material.setTextureMapCorrectionTurnedOn("baseColorTexture", true);
-                    } else {
-                        const hsl = material.baseColor.getHSL();
-                        hsl.h = tempConfig.h;
-                        hsl.s = adjustedSaturation;
-                        // Usamos el canal L dinámico
-                        hsl.l = targetL;
-                        material.baseColor.setHSL(hsl);
-                    }
-                }
-            });
-            viewer.requestFrame();
-        } catch (error) {
-            console.error("Error aplicando temperatura:", error);
-        }
-    };
-    const resetZoneMaterials = (zoneConfig) => {
-        try {
-            zoneConfig.materials.forEach((materialName) => {
-                const material = viewer.findMaterial(materialName);
-                const originalState = originalMaterialStates[materialName];
-                if (material && originalState) {
-                    material.baseColorTexture = originalState.texture || null;
+        const tempConfig = temperatureSettings[temperature];
+        if (!tempConfig) return;
+        const targetL = tempConfig.l !== undefined ? tempConfig.l : 0.5;
+        const adjustedSaturation = tempConfig.s * GLOBAL_COLOR_INTENSITY;
+        zoneConfig.materials.forEach((materialName) => {
+            const material = viewer.findMaterial(materialName);
+            if (material) {
+                if (material.baseColorTexture) {
+                    material.setTextureMapHslAdjustment("baseColorTexture", "h", tempConfig.h);
+                    material.setTextureMapHslAdjustment("baseColorTexture", "s", adjustedSaturation);
+                    material.setTextureMapHslAdjustment("baseColorTexture", "l", targetL);
+                    material.setTextureMapCorrectionTurnedOn("baseColorTexture", true);
+                } else {
                     const hsl = material.baseColor.getHSL();
-                    hsl.h = originalState.h;
-                    hsl.s = originalState.s;
-                    hsl.l = originalState.l;
+                    hsl.h = tempConfig.h; hsl.s = adjustedSaturation; hsl.l = targetL;
                     material.baseColor.setHSL(hsl);
-                    if (material.baseColorTexture) {
-                        material.setTextureMapCorrectionTurnedOn("baseColorTexture", false);
-                    }
                 }
-            });
-            viewer.requestFrame();
-        } catch (error) {
-            console.error("Error al resetear materiales:", error);
-        }
+            }
+        });
+        viewer.requestFrame();
     };
     const initializePanelComponents = (zoneConfig) => {
-        const panelElement = document.getElementById(zoneConfig.panelHtmlId);
-        if (!panelElement) return;
-        // A. Botón Cerrar
-        const closeBtn = panelElement.querySelector(".close-panel-btn");
-        if (closeBtn) {
-            closeBtn.addEventListener("click", () => {
-                panelElement.style.display = "none";
-            });
-        }
-        // B. Botones Temp
-        const tempButtons = panelElement.querySelectorAll(".temp-btn");
-        tempButtons.forEach((btn) => {
-            btn.classList.remove("active");
+        const panel = document.getElementById(zoneConfig.panelHtmlId);
+        if (!panel) return;
+        panel.querySelector(".close-panel-btn")?.addEventListener("click", () => panel.style.display = "none");
+        panel.querySelectorAll(".temp-btn").forEach(btn => {
             btn.addEventListener("click", (e) => {
-                tempButtons.forEach(b => b.classList.remove("active"));
+                panel.querySelectorAll(".temp-btn").forEach(b => b.classList.remove("active"));
                 e.target.classList.add("active");
-                const temp = Number.parseInt(e.target.getAttribute("data-temp"));
-                applyTemperatureToZone(zoneConfig, temp);
+                applyTemperatureToZone(zoneConfig, parseInt(e.target.dataset.temp));
             });
         });
-        // C. Slider
-        const sliderContainer = panelElement.querySelector(".vertical-slider-container");
-        const sliderThumb = panelElement.querySelector(".vertical-slider-thumb");
-        const sliderProgress = panelElement.querySelector(".vertical-slider-progress");
-        const percentageDisplay = panelElement.querySelector(".current-view-percentage");
-        const labelsContainer = panelElement.querySelector(".view-labels-container");
-        const setSliderToIndex = (viewIndex) => {
-            if (viewIndex < 0 || viewIndex >= zoneConfig.sliderViews.length) return;
-            const thumbPos = (viewIndex / (zoneConfig.sliderViews.length - 1)) * 100;
-            // CORRECCIÓN DE POSICIÓN: Centramos el thumb restando 9px (mitad de su altura)
-            sliderThumb.style.bottom = `calc(${thumbPos}% - 9px)`;
-            sliderProgress.style.height = `${thumbPos}%`;
-            percentageDisplay.textContent = zoneConfig.viewLabels[viewIndex];
-            const labels = labelsContainer.querySelectorAll(".view-label");
-            labels.forEach(l => l.classList.remove("active"));
-            if (labels[viewIndex]) labels[viewIndex].classList.add("active");
-            const targetView = zoneConfig.sliderViews[viewIndex];
-            viewer.switchToView(targetView, 0);
+        const sliderCont = panel.querySelector(".vertical-slider-container");
+        const sliderThumb = panel.querySelector(".vertical-slider-thumb");
+        const sliderProg = panel.querySelector(".vertical-slider-progress");
+        const percDisp = panel.querySelector(".current-view-percentage");
+        const labelsCont = panel.querySelector(".view-labels-container");
+        const updateSlider = (idx) => {
+            const p = (idx / (zoneConfig.sliderViews.length - 1)) * 100;
+            sliderThumb.style.bottom = `calc(${p}% - 9px)`;
+            sliderProg.style.height = `${p}%`;
+            percDisp.textContent = zoneConfig.viewLabels[idx];
+            viewer.switchToView(zoneConfig.sliderViews[idx], 0);
         };
-        const handleSliderInteraction = (clientY) => {
-            const rect = sliderContainer.getBoundingClientRect();
-            let relativeY = clientY - rect.top;
-            let normalized = 1 - (relativeY / rect.height);
-            normalized = Math.max(0, Math.min(1, normalized));
-            let viewIndex = Math.floor(normalized * zoneConfig.sliderViews.length);
-            viewIndex = Math.min(viewIndex, zoneConfig.sliderViews.length - 1);
-            setSliderToIndex(viewIndex);
-        };
-        // D. Botón Reset
-        const resetBtn = panelElement.querySelector(".reset-btn");
-        if (resetBtn) {
-            resetBtn.addEventListener("click", () => {
-                resetZoneMaterials(zoneConfig);
-                tempButtons.forEach(b => b.classList.remove("active"));
-                setSliderToIndex(0);
+        if (sliderCont) {
+            labelsCont.innerHTML = "";
+            zoneConfig.viewLabels.forEach((txt, i) => {
+                const lbl = document.createElement("div");
+                lbl.className = "view-label"; lbl.textContent = txt;
+                lbl.style.bottom = `${(i / (zoneConfig.sliderViews.length - 1)) * 100}%`;
+                lbl.onclick = () => updateSlider(i);
+                labelsCont.appendChild(lbl);
             });
-        }
-        if (sliderContainer && zoneConfig.sliderViews.length > 0) {
-            setSliderToIndex(0);
-            labelsContainer.innerHTML = "";
-            zoneConfig.viewLabels.forEach((labelText, index) => {
-                const label = document.createElement("div");
-                label.className = "view-label";
-                label.textContent = labelText;
-                label.setAttribute("data-view-index", index);
-                const position = (index / (zoneConfig.sliderViews.length - 1)) * 100;
-                label.style.bottom = `${position}%`;
-                label.addEventListener("click", () => setSliderToIndex(index));
-                labelsContainer.appendChild(label);
-            });
-            let isDragging = false;
-            sliderContainer.addEventListener("mousedown", (e) => { isDragging = true; handleSliderInteraction(e.clientY); });
-            document.addEventListener("mousemove", (e) => { if (isDragging) handleSliderInteraction(e.clientY); });
-            document.addEventListener("mouseup", () => isDragging = false);
-            sliderContainer.addEventListener("touchstart", (e) => { handleSliderInteraction(e.touches[0].clientY); e.preventDefault(); });
-            sliderContainer.addEventListener("touchmove", (e) => { handleSliderInteraction(e.touches[0].clientY); e.preventDefault(); });
+            let dragging = false;
+            const handle = (y) => {
+                const r = sliderCont.getBoundingClientRect();
+                let norm = Math.max(0, Math.min(1, 1 - (y - r.top) / r.height));
+                updateSlider(Math.min(zoneConfig.sliderViews.length - 1, Math.floor(norm * zoneConfig.sliderViews.length)));
+            };
+            sliderCont.onmousedown = (e) => { dragging = true; handle(e.clientY); };
+            document.onmousemove = (e) => dragging && handle(e.clientY);
+            document.onmouseup = () => dragging = false;
         }
     };
     // =================================================================
-    // IMPLEMENTACIÓN DE JOYSTICK (Módulo Integrado + Mejoras de Diseño)
+    // JOYSTICK PAD v2
     // =================================================================
     const initJoystick = (viewer) => {
-        console.log("🎮 Iniciando Joystick Controller (Premium Ver)...");
-        // --- Configuración ---\r
+        console.log("🎮 --- JOYSTICK v2: DESIGN PAD LOADED ---");
         const cameraSpeed = 2000;
         const drawInterval = 1000 / 30;
-        const _joystick = true;
-        const _sab = '20px'; // Un poco más de margen inferior
-        const _flipMouse = -1;
-        // Elementos del Joystick
+        const _sab = '15px';
         const wCanvas = document.getElementById('walk-canvas');
         if (!wCanvas) {
-            console.warn("⚠️ No se encontró 'walk-canvas'. El joystick no se puede inicializar.");
+            console.error("❌ ERROR: No se encontró 'walk-canvas'. Verifica la ID del canvas de Shapespark.");
             return;
         }
+        console.log("✅ Canvas de Shapespark encontrado:", wCanvas);
         const leftStick = document.createElement('div');
         const rightStick = document.createElement('div');
-        const touchable = 'ontouchstart' in window || 'createTouch' in document || navigator.msPointerEnabled;
-        // Variables de Estado
-        let ls_canvas, rs_canvas;
+        const touchable = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         let lsTouchID = -1, rsTouchID = -2;
         let lsStartX, lsStartY, rsStartX, rsStartY;
         let lsTouchX = 0, lsTouchY = 0, rsTouchX = 0, rsTouchY = 0;
         let touches = [];
         let isDrawing = false;
         let cameraX, cameraY, cameraZ, cameraYaw, cameraYD, cameraPD;
-        // --- Clases ---
         class Camera {
-            constructor(camera_X, camera_Y, camera_Z, camera_Yaw, camera_YD, camera_PD) {
-                this.x = camera_X;
-                this.y = camera_Y;
-                this.z = camera_Z;
-                this.yaw = camera_Yaw;
-                this.yawDeg = camera_YD;
-                this.pitchDeg = camera_PD;
-            }
+            constructor(p, r) { this.p = p; this.r = r; }
             getCam() {
-                cameraX = this.x;
-                cameraY = this.y;
-                cameraZ = this.z;
-                cameraYaw = this.yaw;
-                cameraYD = this.yawDeg;
-                cameraPD = this.pitchDeg;
+                cameraX = this.p.x; cameraY = this.p.y; cameraZ = this.p.z;
+                cameraYaw = this.r.yaw; cameraYD = this.r.yawDeg; cameraPD = this.r.pitchDeg;
             }
             setCam() {
-                // Usamos la API global WALK que ya está disponible
-                let view = new window.WALK.View();
-                view.position.x = this.x;
-                view.position.y = this.y;
-                view.position.z = this.z;
-                view.rotation.yaw = this.yaw;
-                view.rotation.yawDeg = this.yawDeg;
-                view.rotation.pitchDeg = this.pitchDeg;
-                viewer.switchToView(view, 0); // 0ms = movimiento instantáneo
+                let v = new window.WALK.View();
+                v.position.x = cameraX; v.position.y = cameraY; v.position.z = cameraZ;
+                v.rotation.yaw = cameraYaw; v.rotation.yawDeg = cameraYD; v.rotation.pitchDeg = cameraPD;
+                viewer.switchToView(v, 0);
             }
         }
-        // --- Funciones de Utilidad ---
-        function _preventDefault(e) { e.preventDefault(); }
         function createStick() {
-            // TAMAÑO AUMENTADO: 120px para mejorar visibilidad y estilo "Pad"
-            const STICK_SIZE = 120;
-            // Estilos Left Stick
-            leftStick.id = 'left_stick';
-            leftStick.style.position = 'absolute';
-            leftStick.style.bottom = 'calc(30px + ' + _sab + ')';
-            leftStick.style.left = '50%';
-            leftStick.style.transform = 'translateX(-50%) translateY(0)';
-            leftStick.style.width = STICK_SIZE + 'px';
-            leftStick.style.height = STICK_SIZE + 'px';
-            leftStick.style.opacity = 0.9;
-            leftStick.style.transition = 'opacity 0.3s';
-            leftStick.style.cursor = 'pointer';
-            leftStick.style.zIndex = '500';
-            leftStick.style.userSelect = 'none';
-            leftStick.style.webkitUserSelect = 'none';
-            leftStick.style.touchAction = 'none'; // Prevenir scroll al tocar
-            // Estilos Right Stick
-            rightStick.id = 'right_stick';
-            rightStick.style.position = 'absolute';
-            rightStick.style.bottom = '-200px';
-            rightStick.style.right = '-200px';
-            rightStick.style.width = STICK_SIZE + 'px';
-            rightStick.style.height = STICK_SIZE + 'px';
-            rightStick.style.opacity = 0.9;
-            rightStick.style.transition = 'opacity 0.3s';
-            rightStick.style.display = 'none';
-            rightStick.style.zIndex = '500';
-            rightStick.style.userSelect = 'none';
-            rightStick.style.webkitUserSelect = 'none';
-            rightStick.style.touchAction = 'none';
-            const mediaQuery = window.matchMedia('(orientation:landscape)');
-            mediaQuery.addListener(mediaQueryChange);
-            mediaQueryChange(mediaQuery);
-            function mediaQueryChange(e) {
-                if (e.matches) {
-                    leftStick.style.top = '50%';
-                    leftStick.style.bottom = 'auto';
-                    leftStick.style.left = '80px';
-                    leftStick.style.transform = 'translateY(-50%)';
-                    rightStick.style.top = '50%';
-                    rightStick.style.bottom = 'auto';
-                    rightStick.style.right = '80px';
-                    rightStick.style.transform = 'translateY(-50%)';
+            const SIZE = 140; // Un poco más grande para ser impresionante
+            console.log("🛠️ Creando elementos del Joystick (Size: " + SIZE + "px)");
+            const commonStyle = (el, id) => {
+                el.id = id;
+                el.style.position = 'absolute';
+                el.style.width = SIZE + 'px';
+                el.style.height = SIZE + 'px';
+                el.style.zIndex = '999999'; // MÁXIMA PRIORIDAD VISUAL
+                el.style.pointerEvents = 'auto'; // Asegurar que reciba clicks
+                el.style.touchAction = 'none';
+                el.style.userSelect = 'none';
+            };
+            commonStyle(leftStick, 'left_stick');
+            commonStyle(rightStick, 'right_stick');
+            const updatePosition = () => {
+                if (window.innerWidth > window.innerHeight) { // Landscape
+                    leftStick.style.top = '50%'; leftStick.style.bottom = 'auto';
+                    leftStick.style.left = '40px'; leftStick.style.transform = 'translateY(-50%)';
+                    rightStick.style.top = '50%'; rightStick.style.bottom = 'auto';
+                    rightStick.style.right = '40px'; rightStick.style.transform = 'translateY(-50%)';
                     rightStick.style.display = 'block';
-                } else {
-                    leftStick.style.top = 'auto';
-                    leftStick.style.bottom = 'calc(40px + ' + _sab + ')';
-                    leftStick.style.left = '50%';
-                    leftStick.style.transform = 'translateX(-50%) translateY(0)';
-                    rightStick.style.top = 'auto';
-                    rightStick.style.bottom = '-200px';
-                    rightStick.style.right = '-200px';
-                    rightStick.style.transform = 'inherit';
+                } else { // Portrait
+                    leftStick.style.bottom = '40px'; leftStick.style.top = 'auto';
+                    leftStick.style.left = '50%'; leftStick.style.transform = 'translateX(-50%)';
                     rightStick.style.display = 'none';
                 }
-            }
-            const drawStickGraphic = () => {
-                const size = STICK_SIZE;
-                const center = size / 2;
-                const canvas = document.createElement('canvas');
-                canvas.width = size;
-                canvas.height = size;
-                const ctx = canvas.getContext('2d');
-                ctx.clearRect(0, 0, size, size);
-                // Diseño D-PAD con Flechas
-                // 1. Base Circular Externa (Glow sutil)
+            };
+            window.addEventListener('resize', updatePosition);
+            updatePosition();
+            const drawDpad = () => {
+                const can = document.createElement('canvas');
+                can.width = can.height = SIZE;
+                const ctx = can.getContext('2d');
+                const c = SIZE / 2;
+                // 1. Efecto GLOW circular
+                const g = ctx.createRadialGradient(c, c, SIZE * 0.2, c, c, SIZE * 0.5);
+                g.addColorStop(0, 'rgba(0, 123, 255, 0.2)');
+                g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, SIZE, SIZE);
+                // 2. Base D-PAD (Estilo Consola)
                 ctx.beginPath();
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-                ctx.arc(center, center, center, 0, Math.PI * 2, true);
-                ctx.fill();
-                // 2. Base D-Pad (Círculo sólido oscuro)
-                ctx.beginPath();
-                ctx.fillStyle = 'rgba(20, 20, 20, 0.6)';
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-                ctx.lineWidth = 2;
-                ctx.arc(center, center, center * 0.85, 0, Math.PI * 2, true);
+                ctx.arc(c, c, SIZE * 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(30, 30, 30, 0.8)';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 3;
                 ctx.fill();
                 ctx.stroke();
-                // 3. Flechas Direccionales
-                const arrowDist = center * 0.6; // Distancia del centro
-                const arrowSize = 10;
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                // Función auxiliar para dibujar triángulo
-                const drawArrow = (x, y, rotation) => {
-                    ctx.save();
-                    ctx.translate(x, y);
-                    ctx.rotate(rotation);
-                    ctx.beginPath();
-                    ctx.moveTo(0, -arrowSize);
-                    ctx.lineTo(arrowSize, arrowSize * 0.8);
-                    ctx.lineTo(-arrowSize, arrowSize * 0.8);
-                    ctx.closePath();
-                    ctx.fill();
+                // 3. Flechas
+                ctx.fillStyle = 'white';
+                const s = 12; const d = SIZE * 0.28;
+                const drawA = (x, y, r) => {
+                    ctx.save(); ctx.translate(x, y); ctx.rotate(r);
+                    ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s, s * 0.8); ctx.lineTo(-s, s * 0.8); ctx.closePath(); ctx.fill();
                     ctx.restore();
-                }
-                // Arriba (0 rads es derecha en canvas standard arc, pero aquí usamos rotate manual)
-                drawArrow(center, center - arrowDist, 0);
-                // Abajo (PI)
-                drawArrow(center, center + arrowDist, Math.PI);
-                // Izquierda (-PI/2)
-                drawArrow(center - arrowDist, center, -Math.PI / 2);
-                // Derecha (PI/2)
-                drawArrow(center + arrowDist, center, Math.PI / 2);
-                // 3. THUMB Central (Joystick interactivo)
-                const thumbRadius = size * 0.25;
+                };
+                drawA(c, c - d, 0); drawA(c, c + d, Math.PI); drawA(c - d, c, -Math.PI / 2); drawA(c + d, c, Math.PI / 2);
+                // 4. Thumb Stick central (Punto de control)
                 ctx.beginPath();
-                // Gradiente para efecto 3D
-                const grd = ctx.createRadialGradient(center, center, 5, center, center, thumbRadius);
-                grd.addColorStop(0, '#ffffff');
-                grd.addColorStop(1, '#cccccc');
-                ctx.fillStyle = grd;
-                // Sombra
-                ctx.shadowColor = 'rgba(0,0,0,0.6)';
-                ctx.shadowBlur = 8;
-                ctx.shadowOffsetY = 4;
-                ctx.arc(center, center, thumbRadius, 0, Math.PI * 2, true);
+                ctx.arc(c, c, SIZE * 0.15, 0, Math.PI * 2);
+                ctx.shadowBlur = 10; ctx.shadowColor = 'cyan';
+                ctx.fillStyle = '#00f2ff';
                 ctx.fill();
-                // Reset shadow
-                ctx.shadowColor = 'transparent';
-                ctx.shadowBlur = 0;
-                // Detalle pequeño en el centro del thumb (punto azul tecno)
-                ctx.beginPath();
-                ctx.fillStyle = '#007bff';
-                ctx.arc(center, center, thumbRadius * 0.15, 0, Math.PI * 2, true);
-                ctx.fill();
-                return canvas;
+                return can;
             };
-            ls_canvas = drawStickGraphic();
-            rs_canvas = drawStickGraphic();
-            wCanvas.parentNode.insertBefore(leftStick, wCanvas);
-            wCanvas.parentNode.insertBefore(rightStick, wCanvas);
-            leftStick.appendChild(ls_canvas);
-            rightStick.appendChild(rs_canvas);
+            leftStick.appendChild(drawDpad());
+            rightStick.appendChild(drawDpad());
+            wCanvas.parentNode.appendChild(leftStick);
+            wCanvas.parentNode.appendChild(rightStick);
+            console.log("✅ Elementos insertados en el DOM.");
         }
+        const start = (e, stick, isRight) => {
+            const cp = viewer.getCameraPosition(); const cr = viewer.getCameraRotation();
+            new Camera(cp, cr).getCam();
+            stick.style.opacity = 1;
+            const t = e.changedTouches ? e.changedTouches[0] : e;
+            if (isRight) { rsTouchID = t.identifier || -2; rsStartX = t.clientX; rsStartY = t.clientY; }
+            else { lsTouchID = t.identifier || -1; lsStartX = t.clientX; lsStartY = t.clientY; }
+            if (!e.changedTouches) isDrawing = true;
+            touches = e.touches || [];
+        };
+        const move = (e) => {
+            if (e.changedTouches) { touches = e.touches; e.preventDefault(); }
+            else if (isDrawing) { lsTouchX = e.clientX - lsStartX; lsTouchY = lsStartY - e.clientY; }
+        };
+        const end = (e) => {
+            isDrawing = false;
+            leftStick.style.opacity = 0.8; rightStick.style.opacity = 0.8;
+            lsTouchX = lsTouchY = rsTouchX = rsTouchY = 0;
+            lsTouchID = -1; rsTouchID = -2;
+        };
         if (touchable) {
-            document.addEventListener('dblclick', _preventDefault, false);
-            document.addEventListener('touchend', function () {
-                rightStick.dispatchEvent(new TouchEvent('touchend', { bubbles: false, cancelable: true }));
-            }, false);
-            leftStick.addEventListener('touchstart', onLsStart, false);
-            leftStick.addEventListener('touchmove', onTouchMove, false);
-            leftStick.addEventListener('touchend', onLsEnd, false);
-            rightStick.addEventListener('touchstart', onRsStart, false);
-            rightStick.addEventListener('touchmove', onTouchMove, false);
-            rightStick.addEventListener('touchend', onRsEnd, false);
+            leftStick.ontouchstart = (e) => start(e, leftStick, false);
+            rightStick.ontouchstart = (e) => start(e, rightStick, true);
+            document.ontouchmove = move;
+            document.ontouchend = end;
         } else {
-            leftStick.addEventListener('mousedown', onMouseDown, false);
-            document.addEventListener('mousemove', onMouseMove, false);
-            document.addEventListener('mouseup', onMouseUp, false);
-            document.addEventListener('mouseleave', onMouseUp, false);
+            leftStick.onmousedown = (e) => start(e, leftStick, false);
+            document.onmousemove = move;
+            document.onmouseup = end;
         }
-        function onLsStart(e) {
-            const cameraPos = viewer.getCameraPosition();
-            const cameraRot = viewer.getCameraRotation();
-            new Camera(cameraPos.x, cameraPos.y, cameraPos.z, cameraRot.yaw, cameraRot.yawDeg, cameraRot.pitchDeg).getCam();
-            leftStick.style.opacity = 1;
-            for (let i = 0; i < e.changedTouches.length; i++) {
-                const touch = e.changedTouches[i];
-                lsTouchID = touch.identifier;
-                lsStartX = touch.clientX;
-                lsStartY = touch.clientY;
-            }
-            touches = e.touches;
-        }
-        function onRsStart(e) {
-            const cameraPos = viewer.getCameraPosition();
-            const cameraRot = viewer.getCameraRotation();
-            new Camera(cameraPos.x, cameraPos.y, cameraPos.z, cameraRot.yaw, cameraRot.yawDeg, cameraRot.pitchDeg).getCam();
-            rightStick.style.opacity = 1;
-            for (let i = 0; i < e.changedTouches.length; i++) {
-                const touch = e.changedTouches[i];
-                rsTouchID = touch.identifier;
-                rsStartX = touch.clientX;
-                rsStartY = touch.clientY;
-            }
-            touches = e.touches;
-        }
-        function onTouchMove(e) {
-            _preventDefault(e);
-            touches = e.touches;
-        }
-        function onLsEnd(e) {
-            if (e.changedTouches.length != 0) {
-                leftStick.style.opacity = 0.9;
-                for (let i = 0; i < e.changedTouches.length; i++) {
-                    const touch = e.changedTouches[i];
-                    if (lsTouchID == touch.identifier) {
-                        lsTouchX = lsTouchY = 0;
-                        lsTouchID = -1;
-                        break;
-                    }
-                }
-            }
-            touches = e.touches;
-        }
-        function onRsEnd(e) {
-            if (e.changedTouches.length != 0) {
-                rightStick.style.opacity = 0.9;
-                for (let i = 0; i < e.changedTouches.length; i++) {
-                    const touch = e.changedTouches[i];
-                    if (rsTouchID == touch.identifier) {
-                        rsTouchX = rsTouchY = 0;
-                        rsTouchID = -2;
-                        break;
-                    }
-                }
-            }
-            touches = e.touches;
-        }
-        function onMouseDown(e) {
-            const cameraPos = viewer.getCameraPosition();
-            const cameraRot = viewer.getCameraRotation();
-            new Camera(cameraPos.x, cameraPos.y, cameraPos.z, cameraRot.yaw, cameraRot.yawDeg, cameraRot.pitchDeg).getCam();
-            lsTouchX = lsTouchY = 0;
-            lsStartX = e.clientX;
-            lsStartY = e.clientY;
-            isDrawing = true;
-            leftStick.style.opacity = 0.9;
-            wCanvas.style.pointerEvents = 'none';
-        }
-        function onMouseMove(e) {
-            if (isDrawing) {
-                lsTouchX = e.clientX - lsStartX;
-                lsTouchY = lsStartY - e.clientY;
-            }
-        }
-        function onMouseUp() {
-            if (isDrawing) {
-                isDrawing = false;
-                leftStick.style.opacity = 0.9;
-                wCanvas.style.pointerEvents = 'auto';
-            }
-        }
-        function calcStickMove() {
-            cameraX += (((Math.abs(cameraYaw) - Math.PI / 2) * (-1)) * (lsTouchX / cameraSpeed)) + ((Math.abs(Math.abs(Math.abs(cameraYaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(cameraYaw) / cameraYaw * (-1))) * (lsTouchY / cameraSpeed));
-            cameraY -= (((Math.abs(Math.abs(cameraYaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(cameraYaw) / cameraYaw)) * (lsTouchX / cameraSpeed)) - (((Math.abs(cameraYaw) - Math.PI / 2) * (-1)) * (lsTouchY / cameraSpeed));
-        }
-        function calcStickAngle() {
-            cameraYD += rsTouchX * 20 / cameraSpeed * _flipMouse;
-            cameraPD -= rsTouchY * 20 / cameraSpeed * _flipMouse;
-        }
-        function draw() {
-            if (touchable) {
+        function loop() {
+            if (touchable && touches.length > 0) {
                 for (let i = 0; i < touches.length; i++) {
-                    const touch = touches[i];
-                    if (touch.identifier == lsTouchID) {
-                        lsTouchX = touch.clientX - lsStartX;
-                        lsTouchY = lsStartY - touch.clientY;
-                        calcStickMove();
-                    } else if (touch.identifier == rsTouchID) {
-                        rsTouchX = touch.clientX - rsStartX;
-                        rsTouchY = rsStartY - touch.clientY;
-                        calcStickAngle();
-                    }
-                    new Camera(cameraX, cameraY, cameraZ, cameraYaw, cameraYD, cameraPD).setCam();
+                    const t = touches[i];
+                    if (t.identifier == lsTouchID) { lsTouchX = t.clientX - lsStartX; lsTouchY = lsStartY - t.clientY; }
+                    else if (t.identifier == rsTouchID) { rsTouchX = t.clientX - rsStartX; rsTouchY = rsStartY - t.clientY; }
                 }
-            } else {
-                if (isDrawing) {
-                    calcStickMove();
-                    calcStickAngle();
-                    new Camera(cameraX, cameraY, cameraZ, cameraYaw, cameraYD, cameraPD).setCam();
-                }
+                cameraX += (((Math.abs(cameraYaw) - Math.PI / 2) * (-1)) * (lsTouchX / cameraSpeed)) + ((Math.abs(Math.abs(Math.abs(cameraYaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(cameraYaw) / cameraYaw * (-1))) * (lsTouchY / cameraSpeed));
+                cameraY -= (((Math.abs(Math.abs(cameraYaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(cameraYaw) / cameraYaw)) * (lsTouchX / cameraSpeed)) - (((Math.abs(cameraYaw) - Math.PI / 2) * (-1)) * (lsTouchY / cameraSpeed));
+                cameraYD += rsTouchX * 20 / cameraSpeed * (-1);
+                cameraPD -= rsTouchY * 20 / cameraSpeed * (-1);
+                new Camera().setCam();
+            } else if (isDrawing) {
+                cameraX += (((Math.abs(cameraYaw) - Math.PI / 2) * (-1)) * (lsTouchX / cameraSpeed)) + ((Math.abs(Math.abs(Math.abs(cameraYaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(cameraYaw) / cameraYaw * (-1))) * (lsTouchY / cameraSpeed));
+                cameraY -= (((Math.abs(cameraYaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(cameraYaw) / cameraYaw) * (lsTouchX / cameraSpeed)) - (((Math.abs(cameraYaw) - Math.PI / 2) * (-1)) * (lsTouchY / cameraSpeed));
+                new Camera().setCam();
             }
         }
         createStick();
-        setInterval(draw, drawInterval);
+        setInterval(loop, drawInterval);
     };
-    // =================================================================
-    // INICIALIZACIÓN PRINCIPAL
-    // =================================================================
-    const WALK = window.WALK || {}
-    const initializeViewer = () => {
+    const init = () => {
         try {
-            if (!window.WALK) throw new Error("API no disponible");
+            if (!window.WALK) return setTimeout(init, 100);
             viewer = WALK.getViewer();
             viewer.setAllMaterialsEditable();
             viewer.onSceneReadyToDisplay(() => {
-                console.log("Escena lista. Iniciando sistemas...");
-                logAllAvailableMaterials();
                 storeOriginalMaterialStates();
-                ZONES_CONFIG.forEach(zone => initializePanelComponents(zone));
+                ZONES_CONFIG.forEach(initializePanelComponents);
                 initJoystick(viewer);
             });
-            viewer.onViewSwitchDone((viewName) => {
-                updatePanelVisibility(viewName);
-            });
-        } catch (error) {
-            console.error("Init Error:", error);
-        }
+        } catch (e) { console.error("Init Error:", e); }
     }
-    initializeViewer();
+    init();
 });
