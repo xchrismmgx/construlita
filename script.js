@@ -1,6 +1,6 @@
 /**
  * IMPLEMENTACIÓN API SHAPESPARK - ACTUALIZADO
- * Incluye Joystick personalizado 70% más grande y rediseñado.
+ * Incluye Joystick personalizado tipo D-PAD (120px) con flechas direccionales.
  */
 document.addEventListener("DOMContentLoaded", () => {
     let viewer = null
@@ -309,36 +309,37 @@ document.addEventListener("DOMContentLoaded", () => {
         // --- Funciones de Utilidad ---
         function _preventDefault(e) { e.preventDefault(); }
         function createStick() {
-            // TAMAÑO AUMENTADO: 70px (aprox 70% más grande que 40px)
-            const STICK_SIZE = 70;
+            // TAMAÑO AUMENTADO: 120px para mejorar visibilidad y estilo "Pad"
+            const STICK_SIZE = 120;
             // Estilos Left Stick
             leftStick.id = 'left_stick';
             leftStick.style.position = 'absolute';
-            leftStick.style.bottom = 'calc(20px + ' + _sab + ')';
+            leftStick.style.bottom = 'calc(30px + ' + _sab + ')';
             leftStick.style.left = '50%';
             leftStick.style.transform = 'translateX(-50%) translateY(0)';
             leftStick.style.width = STICK_SIZE + 'px';
             leftStick.style.height = STICK_SIZE + 'px';
-            leftStick.style.opacity = 0.8; // Más visible
+            leftStick.style.opacity = 0.9;
             leftStick.style.transition = 'opacity 0.3s';
             leftStick.style.cursor = 'pointer';
             leftStick.style.zIndex = '500';
-            // Deshabilitamos selección
             leftStick.style.userSelect = 'none';
             leftStick.style.webkitUserSelect = 'none';
+            leftStick.style.touchAction = 'none'; // Prevenir scroll al tocar
             // Estilos Right Stick
             rightStick.id = 'right_stick';
             rightStick.style.position = 'absolute';
-            rightStick.style.bottom = '-100px';
-            rightStick.style.right = '-100px';
+            rightStick.style.bottom = '-200px';
+            rightStick.style.right = '-200px';
             rightStick.style.width = STICK_SIZE + 'px';
             rightStick.style.height = STICK_SIZE + 'px';
-            rightStick.style.opacity = 0.8;
+            rightStick.style.opacity = 0.9;
             rightStick.style.transition = 'opacity 0.3s';
             rightStick.style.display = 'none';
             rightStick.style.zIndex = '500';
             rightStick.style.userSelect = 'none';
             rightStick.style.webkitUserSelect = 'none';
+            rightStick.style.touchAction = 'none';
             const mediaQuery = window.matchMedia('(orientation:landscape)');
             mediaQuery.addListener(mediaQueryChange);
             mediaQueryChange(mediaQuery);
@@ -346,11 +347,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (e.matches) {
                     leftStick.style.top = '50%';
                     leftStick.style.bottom = 'auto';
-                    leftStick.style.left = '60px'; // Margen izquierdo
+                    leftStick.style.left = '80px';
                     leftStick.style.transform = 'translateY(-50%)';
                     rightStick.style.top = '50%';
                     rightStick.style.bottom = 'auto';
-                    rightStick.style.right = '60px'; // Margen derecho
+                    rightStick.style.right = '80px';
                     rightStick.style.transform = 'translateY(-50%)';
                     rightStick.style.display = 'block';
                 } else {
@@ -359,8 +360,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     leftStick.style.left = '50%';
                     leftStick.style.transform = 'translateX(-50%) translateY(0)';
                     rightStick.style.top = 'auto';
-                    rightStick.style.bottom = '-100px';
-                    rightStick.style.right = '-100px';
+                    rightStick.style.bottom = '-200px';
+                    rightStick.style.right = '-200px';
                     rightStick.style.transform = 'inherit';
                     rightStick.style.display = 'none';
                 }
@@ -373,30 +374,67 @@ document.addEventListener("DOMContentLoaded", () => {
                 canvas.height = size;
                 const ctx = canvas.getContext('2d');
                 ctx.clearRect(0, 0, size, size);
-                // 1. BASE: Fondo semitransparente oscuro
+                // Diseño D-PAD con Flechas
+                // 1. Base Circular Externa (Glow sutil)
                 ctx.beginPath();
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
                 ctx.arc(center, center, center, 0, Math.PI * 2, true);
                 ctx.fill();
-                // 2. BORDE BASE: Fino, blanco translúcido
+                // 2. Base D-Pad (Círculo sólido oscuro)
                 ctx.beginPath();
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.fillStyle = 'rgba(20, 20, 20, 0.6)';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
                 ctx.lineWidth = 2;
-                ctx.arc(center, center, center - 1, 0, Math.PI * 2, true);
+                ctx.arc(center, center, center * 0.85, 0, Math.PI * 2, true);
+                ctx.fill();
                 ctx.stroke();
-                // 3. THUMB (Palanca interior): Círculo blanco sólido
-                // Tamaño del thumb: aprox 40% del total
+                // 3. Flechas Direccionales
+                const arrowDist = center * 0.6; // Distancia del centro
+                const arrowSize = 10;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                // Función auxiliar para dibujar triángulo
+                const drawArrow = (x, y, rotation) => {
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(rotation);
+                    ctx.beginPath();
+                    ctx.moveTo(0, -arrowSize);
+                    ctx.lineTo(arrowSize, arrowSize * 0.8);
+                    ctx.lineTo(-arrowSize, arrowSize * 0.8);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                }
+                // Arriba (0 rads es derecha en canvas standard arc, pero aquí usamos rotate manual)
+                drawArrow(center, center - arrowDist, 0);
+                // Abajo (PI)
+                drawArrow(center, center + arrowDist, Math.PI);
+                // Izquierda (-PI/2)
+                drawArrow(center - arrowDist, center, -Math.PI / 2);
+                // Derecha (PI/2)
+                drawArrow(center + arrowDist, center, Math.PI / 2);
+                // 3. THUMB Central (Joystick interactivo)
                 const thumbRadius = size * 0.25;
                 ctx.beginPath();
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                ctx.shadowColor = 'rgba(0,0,0,0.5)';
-                ctx.shadowBlur = 4;
-                ctx.shadowOffsetX = 0;
-                ctx.shadowOffsetY = 2;
+                // Gradiente para efecto 3D
+                const grd = ctx.createRadialGradient(center, center, 5, center, center, thumbRadius);
+                grd.addColorStop(0, '#ffffff');
+                grd.addColorStop(1, '#cccccc');
+                ctx.fillStyle = grd;
+                // Sombra
+                ctx.shadowColor = 'rgba(0,0,0,0.6)';
+                ctx.shadowBlur = 8;
+                ctx.shadowOffsetY = 4;
                 ctx.arc(center, center, thumbRadius, 0, Math.PI * 2, true);
                 ctx.fill();
                 // Reset shadow
                 ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+                // Detalle pequeño en el centro del thumb (punto azul tecno)
+                ctx.beginPath();
+                ctx.fillStyle = '#007bff';
+                ctx.arc(center, center, thumbRadius * 0.15, 0, Math.PI * 2, true);
+                ctx.fill();
                 return canvas;
             };
             ls_canvas = drawStickGraphic();
@@ -455,7 +493,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         function onLsEnd(e) {
             if (e.changedTouches.length != 0) {
-                leftStick.style.opacity = 0.8;
+                leftStick.style.opacity = 0.9;
                 for (let i = 0; i < e.changedTouches.length; i++) {
                     const touch = e.changedTouches[i];
                     if (lsTouchID == touch.identifier) {
@@ -469,7 +507,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         function onRsEnd(e) {
             if (e.changedTouches.length != 0) {
-                rightStick.style.opacity = 0.8;
+                rightStick.style.opacity = 0.9;
                 for (let i = 0; i < e.changedTouches.length; i++) {
                     const touch = e.changedTouches[i];
                     if (rsTouchID == touch.identifier) {
@@ -489,7 +527,7 @@ document.addEventListener("DOMContentLoaded", () => {
             lsStartX = e.clientX;
             lsStartY = e.clientY;
             isDrawing = true;
-            leftStick.style.opacity = 0.8;
+            leftStick.style.opacity = 0.9;
             wCanvas.style.pointerEvents = 'none';
         }
         function onMouseMove(e) {
@@ -501,7 +539,7 @@ document.addEventListener("DOMContentLoaded", () => {
         function onMouseUp() {
             if (isDrawing) {
                 isDrawing = false;
-                leftStick.style.opacity = 0.8;
+                leftStick.style.opacity = 0.9;
                 wCanvas.style.pointerEvents = 'auto';
             }
         }
