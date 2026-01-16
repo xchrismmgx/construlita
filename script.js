@@ -1,9 +1,8 @@
 /**
- * IMPLEMENTACIÓN API SHAPESPARK - VERSIÓN DEBUG D-PAD
- * Verificación de carga: Abre la consola (F12) y busca "JOYSTICK v2"
+ * IMPLEMENTACIÓN API SHAPESPARK - VERSIÓN FINAL
+ * Incluye Joystick D-PAD (140px) y corregida la visibilidad de los paneles.
  */
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("🚀 Script principal cargado.");
     let viewer = null;
     const GLOBAL_COLOR_INTENSITY = 0.5;
     const ZONES_CONFIG = [
@@ -37,6 +36,25 @@ document.addEventListener("DOMContentLoaded", () => {
         6500: { h: 0.068, s: -0.265, l: 0.555 },
     }
     const originalMaterialStates = {}
+    // =================================================================
+    // LÓGICA DE PANELES
+    // =================================================================
+    const updatePanelVisibility = (currentViewName) => {
+        let activeZone = null;
+        ZONES_CONFIG.forEach(zone => {
+            const normalizedTriggerViews = zone.triggerViews.map(v => v.toLowerCase());
+            if (normalizedTriggerViews.includes(currentViewName.toLowerCase())) {
+                activeZone = zone;
+            }
+        });
+        document.querySelectorAll('.control-panel').forEach(panel => {
+            panel.style.display = 'none';
+        });
+        if (activeZone) {
+            const panelEl = document.getElementById(activeZone.panelHtmlId);
+            if (panelEl) panelEl.style.display = 'block';
+        }
+    };
     const storeOriginalMaterialStates = () => {
         try {
             const allMaterials = new Set();
@@ -80,17 +98,17 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!panel) return;
         panel.querySelector(".close-panel-btn")?.addEventListener("click", () => panel.style.display = "none");
         panel.querySelectorAll(".temp-btn").forEach(btn => {
-            btn.addEventListener("click", (e) => {
+            btn.onclick = (e) => { // Usamos onclick para evitar duplicados en re-init parciales
                 panel.querySelectorAll(".temp-btn").forEach(b => b.classList.remove("active"));
                 e.target.classList.add("active");
                 applyTemperatureToZone(zoneConfig, parseInt(e.target.dataset.temp));
-            });
+            };
         });
-        const sliderCont = panel.querySelector(".vertical-slider-container");
         const sliderThumb = panel.querySelector(".vertical-slider-thumb");
         const sliderProg = panel.querySelector(".vertical-slider-progress");
         const percDisp = panel.querySelector(".current-view-percentage");
         const labelsCont = panel.querySelector(".view-labels-container");
+        const sliderCont = panel.querySelector(".vertical-slider-container");
         const updateSlider = (idx) => {
             const p = (idx / (zoneConfig.sliderViews.length - 1)) * 100;
             sliderThumb.style.bottom = `calc(${p}% - 9px)`;
@@ -114,24 +132,19 @@ document.addEventListener("DOMContentLoaded", () => {
                 updateSlider(Math.min(zoneConfig.sliderViews.length - 1, Math.floor(norm * zoneConfig.sliderViews.length)));
             };
             sliderCont.onmousedown = (e) => { dragging = true; handle(e.clientY); };
-            document.onmousemove = (e) => dragging && handle(e.clientY);
-            document.onmouseup = () => dragging = false;
+            document.addEventListener("mousemove", (e) => dragging && handle(e.clientY));
+            document.addEventListener("mouseup", () => dragging = false);
         }
     };
     // =================================================================
-    // JOYSTICK PAD v2
+    // JOYSTICK PAD v2 (140px con Flechas)
     // =================================================================
     const initJoystick = (viewer) => {
-        console.log("🎮 --- JOYSTICK v2: DESIGN PAD LOADED ---");
         const cameraSpeed = 2000;
         const drawInterval = 1000 / 30;
         const _sab = '15px';
         const wCanvas = document.getElementById('walk-canvas');
-        if (!wCanvas) {
-            console.error("❌ ERROR: No se encontró 'walk-canvas'. Verifica la ID del canvas de Shapespark.");
-            return;
-        }
-        console.log("✅ Canvas de Shapespark encontrado:", wCanvas);
+        if (!wCanvas) return;
         const leftStick = document.createElement('div');
         const rightStick = document.createElement('div');
         const touchable = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -155,28 +168,28 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
         function createStick() {
-            const SIZE = 140; // Un poco más grande para ser impresionante
-            console.log("🛠️ Creando elementos del Joystick (Size: " + SIZE + "px)");
+            const SIZE = 140;
             const commonStyle = (el, id) => {
                 el.id = id;
                 el.style.position = 'absolute';
                 el.style.width = SIZE + 'px';
                 el.style.height = SIZE + 'px';
-                el.style.zIndex = '999999'; // MÁXIMA PRIORIDAD VISUAL
-                el.style.pointerEvents = 'auto'; // Asegurar que reciba clicks
+                el.style.zIndex = '999999';
+                el.style.pointerEvents = 'auto';
                 el.style.touchAction = 'none';
                 el.style.userSelect = 'none';
+                el.style.opacity = '0.8.5';
             };
             commonStyle(leftStick, 'left_stick');
             commonStyle(rightStick, 'right_stick');
             const updatePosition = () => {
-                if (window.innerWidth > window.innerHeight) { // Landscape
+                if (window.innerWidth > window.innerHeight) {
                     leftStick.style.top = '50%'; leftStick.style.bottom = 'auto';
                     leftStick.style.left = '40px'; leftStick.style.transform = 'translateY(-50%)';
                     rightStick.style.top = '50%'; rightStick.style.bottom = 'auto';
                     rightStick.style.right = '40px'; rightStick.style.transform = 'translateY(-50%)';
                     rightStick.style.display = 'block';
-                } else { // Portrait
+                } else {
                     leftStick.style.bottom = '40px'; leftStick.style.top = 'auto';
                     leftStick.style.left = '50%'; leftStick.style.transform = 'translateX(-50%)';
                     rightStick.style.display = 'none';
@@ -189,34 +202,30 @@ document.addEventListener("DOMContentLoaded", () => {
                 can.width = can.height = SIZE;
                 const ctx = can.getContext('2d');
                 const c = SIZE / 2;
-                // 1. Efecto GLOW circular
                 const g = ctx.createRadialGradient(c, c, SIZE * 0.2, c, c, SIZE * 0.5);
                 g.addColorStop(0, 'rgba(0, 123, 255, 0.2)');
                 g.addColorStop(1, 'rgba(0, 0, 0, 0)');
                 ctx.fillStyle = g;
                 ctx.fillRect(0, 0, SIZE, SIZE);
-                // 2. Base D-PAD (Estilo Consola)
                 ctx.beginPath();
                 ctx.arc(c, c, SIZE * 0.4, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(30, 30, 30, 0.8)';
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-                ctx.lineWidth = 3;
+                ctx.fillStyle = 'rgba(20, 20, 20, 0.7)';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 2;
                 ctx.fill();
                 ctx.stroke();
-                // 3. Flechas
-                ctx.fillStyle = 'white';
-                const s = 12; const d = SIZE * 0.28;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                const s = 10; const d = SIZE * 0.28;
                 const drawA = (x, y, r) => {
                     ctx.save(); ctx.translate(x, y); ctx.rotate(r);
                     ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s, s * 0.8); ctx.lineTo(-s, s * 0.8); ctx.closePath(); ctx.fill();
                     ctx.restore();
                 };
                 drawA(c, c - d, 0); drawA(c, c + d, Math.PI); drawA(c - d, c, -Math.PI / 2); drawA(c + d, c, Math.PI / 2);
-                // 4. Thumb Stick central (Punto de control)
                 ctx.beginPath();
                 ctx.arc(c, c, SIZE * 0.15, 0, Math.PI * 2);
-                ctx.shadowBlur = 10; ctx.shadowColor = 'cyan';
                 ctx.fillStyle = '#00f2ff';
+                ctx.shadowBlur = 10; ctx.shadowColor = 'cyan';
                 ctx.fill();
                 return can;
             };
@@ -224,7 +233,6 @@ document.addEventListener("DOMContentLoaded", () => {
             rightStick.appendChild(drawDpad());
             wCanvas.parentNode.appendChild(leftStick);
             wCanvas.parentNode.appendChild(rightStick);
-            console.log("✅ Elementos insertados en el DOM.");
         }
         const start = (e, stick, isRight) => {
             const cp = viewer.getCameraPosition(); const cr = viewer.getCameraRotation();
@@ -249,12 +257,12 @@ document.addEventListener("DOMContentLoaded", () => {
         if (touchable) {
             leftStick.ontouchstart = (e) => start(e, leftStick, false);
             rightStick.ontouchstart = (e) => start(e, rightStick, true);
-            document.ontouchmove = move;
-            document.ontouchend = end;
+            document.addEventListener("touchmove", move, { passive: false });
+            document.addEventListener("touchend", end);
         } else {
             leftStick.onmousedown = (e) => start(e, leftStick, false);
-            document.onmousemove = move;
-            document.onmouseup = end;
+            document.addEventListener("mousemove", move);
+            document.addEventListener("mouseup", end);
         }
         function loop() {
             if (touchable && touches.length > 0) {
@@ -281,11 +289,14 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             if (!window.WALK) return setTimeout(init, 100);
             viewer = WALK.getViewer();
-            viewer.setAllMaterialsEditable();
             viewer.onSceneReadyToDisplay(() => {
                 storeOriginalMaterialStates();
                 ZONES_CONFIG.forEach(initializePanelComponents);
                 initJoystick(viewer);
+            });
+            // RESTAURADO: Listener para mostrar paneles al cambiar de vista
+            viewer.onViewSwitchDone((viewName) => {
+                updatePanelVisibility(viewName);
             });
         } catch (e) { console.error("Init Error:", e); }
     }
