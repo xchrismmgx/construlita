@@ -4,169 +4,170 @@
 
 /* Base styling for control panels */
 .control-panel {
-  position: absolute;
-  background-color: rgba(40, 40, 40, 0.9);
-  padding: 18px;
-  border-radius: 6px;
-  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.4);
-  color: #f0f0f0;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  z-index: 1000;
+  position: absolute !important;
+  background-color: rgba(40, 40, 40, 0.9) !important;
+  padding: 18px !important;
+  border-radius: 6px !important;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.4) !important;
+  color: #f0f0f0 !important;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
+  z-index: 1000 !important;
   /* POSICIÓN ORIGINAL: ABAJO IZQUIERDA */
-  bottom: 20px;
-  left: 20px;
-  width: 140px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  user-select: none;
+  bottom: 20px !important;
+  left: 20px !important;
+  right: auto !important; /* Asegura que no se estire si hay conflictos con 'right' */
+  width: 140px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  user-select: none !important;
 }
 
 /* BOTÓN DE CERRAR */
 .close-panel-btn {
-  position: absolute;
-  top: 5px;
-  right: 8px;
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 20px;
-  font-weight: bold;
-  cursor: pointer;
-  padding: 0;
-  transition: color 0.2s ease;
+  position: absolute !important;
+  top: 5px !important;
+  right: 8px !important;
+  background: transparent !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+  font-size: 20px !important;
+  font-weight: bold !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  transition: color 0.2s ease !important;
 }
 
 .close-panel-btn:hover {
-  color: #ff4d4d;
+  color: #ff4d4d !important;
 }
 
 .control-panel h4 {
-  margin: 0 0 12px 0;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: #ffffff;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  padding-bottom: 4px;
+  margin: 0 0 12px 0 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
+  padding-bottom: 4px !important;
 }
 
 /* BOTONES DE TEMPERATURA */
 .temperature-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 15px;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  margin-bottom: 15px !important;
 }
 
 .temp-btn {
-  width: 100%;
-  color: #f0f0f0;
-  background-color: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  padding: 6px 0;
-  cursor: pointer;
-  border-radius: 4px;
-  font-size: 12px;
-  transition: all 0.2s ease;
-  text-align: center;
-  font-weight: 600;
+  width: 100% !important;
+  color: #f0f0f0 !important;
+  background-color: transparent !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  padding: 6px 0 !important;
+  cursor: pointer !important;
+  border-radius: 4px !important;
+  font-size: 12px !important;
+  transition: all 0.2s ease !important;
+  text-align: center !important;
+  font-weight: 600 !important;
 }
 
 /* COLORES DE TEMPERATURA SEGÚN DISEÑO ORIGINAL */
 .temp-btn[data-temp="2700"] {
-  background-color: #fed360;
-  color: #000000;
-  border-color: #e0b040;
+  background-color: #fed360 !important;
+  color: #000000 !important;
+  border-color: #e0b040 !important;
 }
 
 .temp-btn[data-temp="3000"] {
-  background-color: #fce084;
-  color: #000000;
-  border-color: #e0c060;
+  background-color: #fce084 !important;
+  color: #000000 !important;
+  border-color: #e0c060 !important;
 }
 
 .temp-btn[data-temp="4000"] {
-  background-color: #fef6c8;
-  color: #000000;
-  border-color: #e0d8a0;
+  background-color: #fef6c8 !important;
+  color: #000000 !important;
+  border-color: #e0d8a0 !important;
 }
 
 .temp-btn[data-temp="6000"] {
-  background-color: #b1e3fa;
-  color: #000000;
-  border-color: #90c0e0;
+  background-color: #b1e3fa !important;
+  color: #000000 !important;
+  border-color: #90c0e0 !important;
 }
 
 .temp-btn:hover {
-  opacity: 0.9;
-  transform: scale(1.02);
+  opacity: 0.9 !important;
+  transform: scale(1.02) !important;
 }
 
 /* SLIDER DE INTENSIDAD */
 .slider-and-labels-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin: 10px 0;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  margin: 10px 0 !important;
 }
 
 .vertical-slider-container {
-  position: relative;
-  width: 12px;
-  height: 120px;
-  background: #222;
-  border-radius: 6px;
-  cursor: pointer;
-  border: 1px solid #444;
+  position: relative !important;
+  width: 12px !important;
+  height: 120px !important;
+  background: #222 !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  border: 1px solid #444 !important;
 }
 
 .vertical-slider-track {
-  width: 100%;
-  height: 100%;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .vertical-slider-progress {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  background: #007bff;
-  border-radius: 6px;
+  position: absolute !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  background: #007bff !important;
+  border-radius: 6px !important;
 }
 
 .vertical-slider-thumb {
-  position: absolute;
-  left: 50%;
-  transform: translate(-50%, 50%);
-  width: 18px;
-  height: 18px;
-  background: #fff;
-  border-radius: 50%;
-  box-shadow: 0 0 4px rgba(0,0,0,0.5);
-  border: 2px solid #007bff;
+  position: absolute !important;
+  left: 50% !important;
+  transform: translate(-50%, 50%) !important;
+  width: 18px !important;
+  height: 18px !important;
+  background: #fff !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 4px rgba(0,0,0,0.5) !important;
+  border: 2px solid #007bff !important;
 }
 
 .current-view-percentage {
-  display: block;
-  text-align: center;
-  font-weight: bold;
-  margin-top: 8px;
-  font-size: 14px;
-  color: #ffffff;
+  display: block !important;
+  text-align: center !important;
+  font-weight: bold !important;
+  margin-top: 8px !important;
+  font-size: 14px !important;
+  color: #ffffff !important;
 }
 
 .reset-btn {
-  width: 100%;
-  margin-top: 12px;
-  background: #444;
-  border: 1px solid #555;
-  color: #fff;
-  padding: 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
-  font-weight: bold;
-  text-transform: uppercase;
+  width: 100% !important;
+  margin-top: 12px !important;
+  background: #444 !important;
+  border: 1px solid #555 !important;
+  color: #fff !important;
+  padding: 8px !important;
+  border-radius: 4px !important;
+  font-size: 11px !important;
+  cursor: pointer !important;
+  font-weight: bold !important;
+  text-transform: uppercase !important;
 }
 
 .reset-btn:hover {
-  background: #555;
+  background: #555 !important;
 }
