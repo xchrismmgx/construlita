@@ -1,173 +1,169 @@
 /* REFACTORIZACIÓN PARA CARPETA EXTRA-ASSETS 
    Diseño Original Construlita: Panel a la izquierda, botones de color sólido.
+   Se aumenta la especificidad para evitar conflictos con estilos internos del visor.
 */
 
-/* Base styling for control panels */
-.control-panel {
+/* Base styling for control panels - Usando IDs para máxima prioridad */
+div[id^="container-"].control-panel {
   position: absolute !important;
-  background-color: rgba(40, 40, 40, 0.9) !important;
+  background-color: rgba(40, 40, 40, 0.95) !important;
   padding: 18px !important;
   border-radius: 6px !important;
-  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.4) !important;
-  color: #f0f0f0 !important;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5) !important;
+  color: #ffffff !important;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
-  z-index: 1000 !important;
-  /* POSICIÓN ORIGINAL: ABAJO IZQUIERDA */
+  z-index: 9999 !important; /* Elevado para estar sobre todo */
+  
+  /* POSICIÓN FIJA IZQUIERDA */
   bottom: 20px !important;
   left: 20px !important;
-  right: auto !important; /* Asegura que no se estire si hay conflictos con 'right' */
-  width: 140px !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  right: auto !important;
+  width: 145px !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
   user-select: none !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 
 /* BOTÓN DE CERRAR */
-.close-panel-btn {
+.control-panel .close-panel-btn {
   position: absolute !important;
   top: 5px !important;
   right: 8px !important;
   background: transparent !important;
   border: none !important;
-  color: rgba(255, 255, 255, 0.5) !important;
-  font-size: 20px !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+  font-size: 22px !important;
   font-weight: bold !important;
   cursor: pointer !important;
   padding: 0 !important;
-  transition: color 0.2s ease !important;
+  line-height: 1 !important;
 }
 
-.close-panel-btn:hover {
+.control-panel .close-panel-btn:hover {
   color: #ff4d4d !important;
 }
 
 .control-panel h4 {
-  margin: 0 0 12px 0 !important;
-  font-size: 11px !important;
-  font-weight: 600 !important;
+  margin: 0 0 10px 0 !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
   text-transform: uppercase !important;
   color: #ffffff !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
   padding-bottom: 4px !important;
+  letter-spacing: 0.5px !important;
 }
 
-/* BOTONES DE TEMPERATURA */
-.temperature-buttons {
+/* CONTENEDOR DE BOTONES */
+.control-panel .temperature-buttons {
   display: flex !important;
   flex-direction: column !important;
-  gap: 6px !important;
+  gap: 5px !important;
   margin-bottom: 15px !important;
 }
 
-.temp-btn {
+/* BOTONES DE TEMPERATURA CON COLORES SÓLIDOS */
+.control-panel .temp-btn {
   width: 100% !important;
-  color: #f0f0f0 !important;
-  background-color: transparent !important;
-  border: 1px solid rgba(255, 255, 255, 0.3) !important;
-  padding: 6px 0 !important;
+  padding: 8px 0 !important;
   cursor: pointer !important;
   border-radius: 4px !important;
   font-size: 12px !important;
-  transition: all 0.2s ease !important;
   text-align: center !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
+  border: 1px solid rgba(0, 0, 0, 0.2) !important;
+  transition: transform 0.1s ease !important;
 }
 
-/* COLORES DE TEMPERATURA SEGÚN DISEÑO ORIGINAL */
-.temp-btn[data-temp="2700"] {
+/* ASIGNACIÓN DE COLORES SEGÚN DISEÑO ORIGINAL */
+.control-panel .temp-btn[data-temp="2700"] {
   background-color: #fed360 !important;
   color: #000000 !important;
-  border-color: #e0b040 !important;
 }
 
-.temp-btn[data-temp="3000"] {
+.control-panel .temp-btn[data-temp="3000"] {
   background-color: #fce084 !important;
   color: #000000 !important;
-  border-color: #e0c060 !important;
 }
 
-.temp-btn[data-temp="4000"] {
+.control-panel .temp-btn[data-temp="4000"] {
   background-color: #fef6c8 !important;
   color: #000000 !important;
-  border-color: #e0d8a0 !important;
 }
 
-.temp-btn[data-temp="6000"] {
+.control-panel .temp-btn[data-temp="6000"] {
   background-color: #b1e3fa !important;
   color: #000000 !important;
-  border-color: #90c0e0 !important;
 }
 
-.temp-btn:hover {
-  opacity: 0.9 !important;
-  transform: scale(1.02) !important;
+.control-panel .temp-btn:hover {
+  filter: brightness(1.1) !important;
+  transform: scale(1.03) !important;
 }
 
 /* SLIDER DE INTENSIDAD */
-.slider-and-labels-container {
+.control-panel .slider-and-labels-container {
   display: flex !important;
   flex-direction: column !important;
   align-items: center !important;
   margin: 10px 0 !important;
 }
 
-.vertical-slider-container {
+.control-panel .vertical-slider-container {
   position: relative !important;
-  width: 12px !important;
+  width: 14px !important;
   height: 120px !important;
-  background: #222 !important;
-  border-radius: 6px !important;
+  background: #1a1a1a !important;
+  border-radius: 7px !important;
   cursor: pointer !important;
-  border: 1px solid #444 !important;
+  border: 1px solid #333 !important;
 }
 
-.vertical-slider-track {
-  width: 100% !important;
-  height: 100% !important;
-}
-
-.vertical-slider-progress {
+.control-panel .vertical-slider-progress {
   position: absolute !important;
   bottom: 0 !important;
   width: 100% !important;
   background: #007bff !important;
-  border-radius: 6px !important;
+  border-radius: 7px !important;
 }
 
-.vertical-slider-thumb {
+.control-panel .vertical-slider-thumb {
   position: absolute !important;
   left: 50% !important;
   transform: translate(-50%, 50%) !important;
-  width: 18px !important;
-  height: 18px !important;
-  background: #fff !important;
+  width: 20px !important;
+  height: 20px !important;
+  background: #ffffff !important;
   border-radius: 50% !important;
-  box-shadow: 0 0 4px rgba(0,0,0,0.5) !important;
+  box-shadow: 0 0 5px rgba(0,0,0,0.8) !important;
   border: 2px solid #007bff !important;
 }
 
-.current-view-percentage {
+.control-panel .current-view-percentage {
   display: block !important;
   text-align: center !important;
   font-weight: bold !important;
-  margin-top: 8px !important;
-  font-size: 14px !important;
-  color: #ffffff !important;
+  margin-top: 10px !important;
+  font-size: 15px !important;
+  color: #007bff !important;
 }
 
-.reset-btn {
+/* BOTÓN RESET */
+.control-panel .reset-btn {
   width: 100% !important;
-  margin-top: 12px !important;
-  background: #444 !important;
+  margin-top: 15px !important;
+  background: #333 !important;
   border: 1px solid #555 !important;
-  color: #fff !important;
+  color: #ffffff !important;
   padding: 8px !important;
   border-radius: 4px !important;
-  font-size: 11px !important;
+  font-size: 10px !important;
   cursor: pointer !important;
   font-weight: bold !important;
   text-transform: uppercase !important;
 }
 
-.reset-btn:hover {
-  background: #555 !important;
+.control-panel .reset-btn:hover {
+  background: #444 !important;
 }
