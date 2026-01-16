@@ -1,14 +1,13 @@
 /**
- * IMPLEMENTACIÓN API SHAPESPARK - VERSIÓN 6.0 (REFINED PREMIUM)
- * - Joystick D-PAD: Tamaño reducido a 112px (-20%).
- * - Z-Index: 500 (Detrás de los paneles de control que tienen 1000).
- * - Movimiento: Más lento y suave (cameraSpeed 3500).
- * - FIX: Slider de intensidad restaurado y funcional.
- * - FIX: Paneles persistentes durante el movimiento.
- * Verificación: Busca "--- VERSIÓN 6.0 CARGADA ---" en la consola.
+ * IMPLEMENTACIÓN API SHAPESPARK - VERSIÓN 8.0 (B&W MINIMALIST)
+ * - Joystick D-PAD: Tamaño 95px (-15% de v7), Z-Index 500.
+ * - ESTÉTICA: Blanco y Negro (Sin colores cian/verde).
+ * - SENTIDO INVERTIDO: Eje Y del joystick izquierdo.
+ * - VELOCIDAD: Ultra-lenta (cameraSpeed 8500).
+ * Verificación: Busca "--- VERSIÓN 8.0 CARGADA ---" en la consola.
  */
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("🚀 --- VERSIÓN 6.0 CARGADA ---");
+    console.log("🚀 --- VERSIÓN 8.0 CARGADA ---");
     let viewer = null;
     const GLOBAL_COLOR_INTENSITY = 0.5;
     const ZONES_CONFIG = [
@@ -85,9 +84,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const initializePanelComponents = (zoneConfig) => {
         const panel = document.getElementById(zoneConfig.panelHtmlId);
         if (!panel) return;
-        // Botón Cerrar
         panel.querySelector(".close-panel-btn")?.addEventListener("click", () => panel.style.display = "none");
-        // Botones de Temperatura
         panel.querySelectorAll(".temp-btn").forEach(btn => {
             btn.onclick = (e) => {
                 panel.querySelectorAll(".temp-btn").forEach(b => b.classList.remove("active"));
@@ -95,7 +92,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 applyTemperatureToZone(zoneConfig, parseInt(e.target.dataset.temp));
             };
         });
-        // Slider Vertical (Intensidad de Vista)
         const sliderThumb = panel.querySelector(".vertical-slider-thumb");
         const sliderProg = panel.querySelector(".vertical-slider-progress");
         const percDisp = panel.querySelector(".current-view-percentage");
@@ -128,24 +124,16 @@ document.addEventListener("DOMContentLoaded", () => {
             sliderCont.addEventListener('mousedown', (e) => { dragging = true; handle(e.clientY); });
             document.addEventListener("mousemove", (e) => dragging && handle(e.clientY));
             document.addEventListener("mouseup", () => dragging = false);
-            sliderCont.addEventListener('touchstart', (e) => {
-                dragging = true;
-                handle(e.touches[0].clientY);
-            }, { passive: false });
-            document.addEventListener("touchmove", (e) => {
-                if (dragging) {
-                    handle(e.touches[0].clientY);
-                    e.preventDefault();
-                }
-            }, { passive: false });
+            sliderCont.addEventListener('touchstart', (e) => { dragging = true; handle(e.touches[0].clientY); }, { passive: false });
+            document.addEventListener("touchmove", (e) => { if (dragging) { handle(e.touches[0].clientY); e.preventDefault(); } }, { passive: false });
             document.addEventListener("touchend", () => dragging = false);
         }
     };
-    // --- JOYSTICK D-PAD v6 ---
+    // --- JOYSTICK D-PAD v8 (B&W) ---
     const initJoystick = (viewer) => {
-        const cameraSpeed = 3500; // MÁS LENTO Y SUAVE
+        const cameraSpeed = 8500;
         const drawInterval = 1000 / 60;
-        const SIZE = 112; // REDUCIDO 20% (de 140 a 112)
+        const SIZE = 95; // REDUCIDO 15% adicionales de la v7
         const wCanvas = document.getElementById('walk-canvas');
         if (!wCanvas) return;
         const leftStick = document.createElement('div');
@@ -155,13 +143,11 @@ document.addEventListener("DOMContentLoaded", () => {
             right: { active: false, id: -1, startX: 0, startY: 0, dx: 0, dy: 0 }
         };
         const applyStyle = (el, id) => {
-            el.id = id;
-            el.style.position = 'absolute'; el.style.width = SIZE + 'px'; el.style.height = SIZE + 'px';
-            el.style.zIndex = '500'; // DETRÁS DEL PANEL (Panel tiene 1000)
-            el.style.touchAction = 'none'; el.style.pointerEvents = 'auto';
+            el.id = id; el.style.position = 'absolute'; el.style.width = SIZE + 'px'; el.style.height = SIZE + 'px';
+            el.style.zIndex = '500'; el.style.touchAction = 'none'; el.style.pointerEvents = 'auto';
             el.style.userSelect = 'none'; el.style.opacity = '0.7'; el.style.cursor = 'pointer';
         };
-        applyStyle(leftStick, 'ls_v6'); applyStyle(rightStick, 'rs_v6');
+        applyStyle(leftStick, 'ls_v8'); applyStyle(rightStick, 'rs_v8');
         const updateUI = () => {
             if (window.innerWidth > window.innerHeight) {
                 leftStick.style.top = '50%'; leftStick.style.left = '40px'; leftStick.style.transform = 'translateY(-50%)';
@@ -173,39 +159,40 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
         window.addEventListener('resize', updateUI); updateUI();
-        const drawDpad = (color) => {
+        const drawDpad = () => {
             const can = document.createElement('canvas'); can.width = can.height = SIZE;
             const ctx = can.getContext('2d'); const c = SIZE / 2;
+            // Base B&W
             ctx.beginPath(); ctx.arc(c, c, SIZE * 0.4, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(20, 20, 20, 0.85)'; ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 3;
+            ctx.fillStyle = 'rgba(15, 15, 15, 0.9)'; ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 3;
             ctx.fill(); ctx.stroke();
+            // Flechas Blancas
             ctx.fillStyle = 'white';
-            const s = 8; const d = SIZE * 0.28;
+            const s = 7; const d = SIZE * 0.28;
             const drawA = (x, y, r) => {
                 ctx.save(); ctx.translate(x, y); ctx.rotate(r); ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s, s * 0.8); ctx.lineTo(-s, s * 0.8); ctx.closePath(); ctx.fill(); ctx.restore();
             };
             drawA(c, c - d, 0); drawA(c, c + d, Math.PI); drawA(c - d, c, -Math.PI / 2); drawA(c + d, c, Math.PI / 2);
-            ctx.beginPath(); ctx.arc(c, c, SIZE * 0.14, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+            // Botón central Blanco (Estilo B&W)
+            ctx.beginPath(); ctx.arc(c, c, SIZE * 0.14, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; ctx.fill();
             return can;
         };
-        leftStick.appendChild(drawDpad('#00f2ff')); rightStick.appendChild(drawDpad('#00ff88'));
+        leftStick.appendChild(drawDpad()); rightStick.appendChild(drawDpad());
         wCanvas.parentNode.appendChild(leftStick); wCanvas.parentNode.appendChild(rightStick);
         const handleStart = (e, side) => {
             const t = e.changedTouches ? e.changedTouches[0] : e;
             const st = joystickState[side];
-            st.active = true;
-            st.id = t.identifier === undefined ? 'mouse' : t.identifier;
-            st.startX = t.clientX; st.startY = t.clientY;
-            st.dx = 0; st.dy = 0;
+            st.active = true; st.id = t.identifier === undefined ? 'mouse' : t.identifier;
+            st.startX = t.clientX; st.startY = t.clientY; st.dx = 0; st.dy = 0;
         };
         const handleMove = (e) => {
             const ts = e.changedTouches || [e];
             for (let i = 0; i < ts.length; i++) {
-                const t = ts[i];
-                const id = t.identifier === undefined ? 'mouse' : t.identifier;
+                const t = ts[i]; const id = t.identifier === undefined ? 'mouse' : t.identifier;
                 if (joystickState.left.active && id === joystickState.left.id) {
                     joystickState.left.dx = t.clientX - joystickState.left.startX;
-                    joystickState.left.dy = joystickState.left.startY - t.clientY;
+                    joystickState.left.dy = t.clientY - joystickState.left.startY; // Invertido
                 }
                 if (joystickState.right.active && id === joystickState.right.id) {
                     joystickState.right.dx = t.clientX - joystickState.right.startX;
@@ -220,26 +207,19 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (id === joystickState.left.id) { joystickState.left.active = false; joystickState.left.id = -1; joystickState.left.dx = 0; joystickState.left.dy = 0; }
                 if (id === joystickState.right.id) { joystickState.right.active = false; joystickState.right.id = -1; joystickState.right.dx = 0; joystickState.right.dy = 0; }
             }
-            if (!e.changedTouches) {
-                joystickState.left.active = false; joystickState.right.active = false;
-                joystickState.left.dx = 0; joystickState.left.dy = 0;
-                joystickState.right.dx = 0; joystickState.right.dy = 0;
-            }
+            if (!e.changedTouches) { joystickState.left.active = false; joystickState.right.active = false; }
         };
         leftStick.addEventListener('touchstart', (e) => handleStart(e, 'left'), { passive: true });
         rightStick.addEventListener('touchstart', (e) => handleStart(e, 'right'), { passive: true });
         document.addEventListener('touchmove', handleMove, { passive: true });
-        document.addEventListener('touchend', handleEnd);
-        document.addEventListener('touchcancel', handleEnd);
+        document.addEventListener('touchend', handleEnd); document.addEventListener('touchcancel', handleEnd);
         leftStick.addEventListener('mousedown', (e) => handleStart(e, 'left'));
-        document.addEventListener('mousemove', handleMove);
-        document.addEventListener('mouseup', handleEnd);
+        document.addEventListener('mousemove', handleMove); document.addEventListener('mouseup', handleEnd);
         setInterval(() => {
             if (!joystickState.left.active && !joystickState.right.active) return;
             const p = viewer.getCameraPosition(); const r = viewer.getCameraRotation();
             if (!p || !r) return;
-            const s = 15 / cameraSpeed;
-            const cY = Math.cos(r.yaw); const sY = Math.sin(r.yaw);
+            const s = 15 / cameraSpeed; const cY = Math.cos(r.yaw); const sY = Math.sin(r.yaw);
             let mx = 0, my = 0;
             if (joystickState.left.active) {
                 mx = (sY * joystickState.left.dy + cY * joystickState.left.dx) * s;
@@ -258,8 +238,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const init = () => {
         if (!window.WALK) return setTimeout(init, 100);
-        viewer = WALK.getViewer();
-        viewer.setAllMaterialsEditable();
+        viewer = WALK.getViewer(); viewer.setAllMaterialsEditable();
         viewer.onSceneReadyToDisplay(() => {
             ZONES_CONFIG.forEach(z => initializePanelComponents(z));
             initJoystick(viewer);
