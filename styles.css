@@ -3,26 +3,30 @@
    Se aumenta la especificidad para evitar conflictos con estilos internos del visor.
 */
 
-/* Base styling for control panels - Usando IDs para máxima prioridad */
-div[id^="container-"].control-panel {
+/* Base styling for control panels - Máxima especificidad usando el ID y la clase */
+div[id^="container-"].control-panel,
+div.control-panel[id] {
   position: absolute !important;
   background-color: rgba(40, 40, 40, 0.95) !important;
   padding: 18px !important;
   border-radius: 6px !important;
-  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5) !important;
+  box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.6) !important;
   color: #ffffff !important;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
-  z-index: 9999 !important; /* Elevado para estar sobre todo */
+  z-index: 10000 !important; /* Valor extremo */
   
-  /* POSICIÓN FIJA IZQUIERDA */
+  /* POSICIÓN FIJA IZQUIERDA - FORZADA */
   bottom: 20px !important;
   left: 20px !important;
   right: auto !important;
+  top: auto !important;
   width: 145px !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
   user-select: none !important;
   display: flex !important;
   flex-direction: column !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 /* BOTÓN DE CERRAR */
@@ -32,12 +36,13 @@ div[id^="container-"].control-panel {
   right: 8px !important;
   background: transparent !important;
   border: none !important;
-  color: rgba(255, 255, 255, 0.6) !important;
-  font-size: 22px !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-size: 24px !important;
   font-weight: bold !important;
   cursor: pointer !important;
   padding: 0 !important;
   line-height: 1 !important;
+  z-index: 10001 !important;
 }
 
 .control-panel .close-panel-btn:hover {
@@ -47,33 +52,36 @@ div[id^="container-"].control-panel {
 .control-panel h4 {
   margin: 0 0 10px 0 !important;
   font-size: 10px !important;
-  font-weight: 700 !important;
+  font-weight: 800 !important;
   text-transform: uppercase !important;
   color: #ffffff !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
-  padding-bottom: 4px !important;
-  letter-spacing: 0.5px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3) !important;
+  padding-bottom: 5px !important;
+  letter-spacing: 0.8px !important;
+  display: block !important;
 }
 
 /* CONTENEDOR DE BOTONES */
 .control-panel .temperature-buttons {
   display: flex !important;
   flex-direction: column !important;
-  gap: 5px !important;
-  margin-bottom: 15px !important;
+  gap: 6px !important;
+  margin-bottom: 18px !important;
+  width: 100% !important;
 }
 
 /* BOTONES DE TEMPERATURA CON COLORES SÓLIDOS */
 .control-panel .temp-btn {
+  display: block !important;
   width: 100% !important;
-  padding: 8px 0 !important;
+  padding: 9px 0 !important;
   cursor: pointer !important;
   border-radius: 4px !important;
-  font-size: 12px !important;
+  font-size: 13px !important;
   text-align: center !important;
-  font-weight: 700 !important;
-  border: 1px solid rgba(0, 0, 0, 0.2) !important;
-  transition: transform 0.1s ease !important;
+  font-weight: 800 !important;
+  border: 1px solid rgba(0, 0, 0, 0.3) !important;
+  transition: transform 0.1s ease, filter 0.2s ease !important;
 }
 
 /* ASIGNACIÓN DE COLORES SEGÚN DISEÑO ORIGINAL */
@@ -99,7 +107,7 @@ div[id^="container-"].control-panel {
 
 .control-panel .temp-btn:hover {
   filter: brightness(1.1) !important;
-  transform: scale(1.03) !important;
+  transform: scale(1.04) !important;
 }
 
 /* SLIDER DE INTENSIDAD */
@@ -108,16 +116,18 @@ div[id^="container-"].control-panel {
   flex-direction: column !important;
   align-items: center !important;
   margin: 10px 0 !important;
+  width: 100% !important;
 }
 
 .control-panel .vertical-slider-container {
   position: relative !important;
-  width: 14px !important;
-  height: 120px !important;
-  background: #1a1a1a !important;
-  border-radius: 7px !important;
+  width: 16px !important;
+  height: 125px !important;
+  background: #151515 !important;
+  border-radius: 8px !important;
   cursor: pointer !important;
-  border: 1px solid #333 !important;
+  border: 1px solid #444 !important;
+  margin: 0 auto !important;
 }
 
 .control-panel .vertical-slider-progress {
@@ -125,28 +135,28 @@ div[id^="container-"].control-panel {
   bottom: 0 !important;
   width: 100% !important;
   background: #007bff !important;
-  border-radius: 7px !important;
+  border-radius: 8px !important;
 }
 
 .control-panel .vertical-slider-thumb {
   position: absolute !important;
   left: 50% !important;
   transform: translate(-50%, 50%) !important;
-  width: 20px !important;
-  height: 20px !important;
+  width: 22px !important;
+  height: 22px !important;
   background: #ffffff !important;
   border-radius: 50% !important;
-  box-shadow: 0 0 5px rgba(0,0,0,0.8) !important;
+  box-shadow: 0 0 6px rgba(0,0,0,0.9) !important;
   border: 2px solid #007bff !important;
 }
 
 .control-panel .current-view-percentage {
   display: block !important;
   text-align: center !important;
-  font-weight: bold !important;
-  margin-top: 10px !important;
-  font-size: 15px !important;
-  color: #007bff !important;
+  font-weight: 800 !important;
+  margin-top: 12px !important;
+  font-size: 16px !important;
+  color: #00d2ff !important;
 }
 
 /* BOTÓN RESET */
@@ -154,16 +164,18 @@ div[id^="container-"].control-panel {
   width: 100% !important;
   margin-top: 15px !important;
   background: #333 !important;
-  border: 1px solid #555 !important;
+  border: 1px solid #666 !important;
   color: #ffffff !important;
-  padding: 8px !important;
+  padding: 10px !important;
   border-radius: 4px !important;
-  font-size: 10px !important;
+  font-size: 11px !important;
   cursor: pointer !important;
-  font-weight: bold !important;
+  font-weight: 700 !important;
   text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
 }
 
 .control-panel .reset-btn:hover {
   background: #444 !important;
+  border-color: #888 !important;
 }
