@@ -1,6 +1,8 @@
 /**
- * IMPLEMENTACIÓN API SHAPESPARK - VERSIÓN FINAL
- * Incluye Joystick D-PAD (140px) y corregida la visibilidad de los paneles.
+ * IMPLEMENTACIÓN API SHAPESPARK - VERSIÓN ESTABLE FINAL
+ * - Joystick D-PAD (140px) optimizado para móviles.
+ * - Fix: No cierra paneles al mover la cámara.
+ * - Fix: Previene bloqueo/congelamiento en dispositivos táctiles.
  */
 document.addEventListener("DOMContentLoaded", () => {
     let viewer = null;
@@ -37,22 +39,31 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     const originalMaterialStates = {}
     // =================================================================
-    // LÓGICA DE PANELES
+    // LÓGICA DE PANELES (Optimizado para no cerrar por Joystick)
     // =================================================================
     const updatePanelVisibility = (currentViewName) => {
+        // Si la vista es temporal (sin nombre definido en Shapespark), ignoramos el evento
+        if (!currentViewName) return;
         let activeZone = null;
+        let anyZoneTriggered = false;
         ZONES_CONFIG.forEach(zone => {
             const normalizedTriggerViews = zone.triggerViews.map(v => v.toLowerCase());
             if (normalizedTriggerViews.includes(currentViewName.toLowerCase())) {
                 activeZone = zone;
+                anyZoneTriggered = true;
             }
         });
-        document.querySelectorAll('.control-panel').forEach(panel => {
-            panel.style.display = 'none';
-        });
-        if (activeZone) {
-            const panelEl = document.getElementById(activeZone.panelHtmlId);
-            if (panelEl) panelEl.style.display = 'block';
+        // IMPORTANTE: Solo cerramos paneles si la vista que terminó de moverse
+        // es una vista con nombre oficial de Shapespark que NO pertenece a la zona actual.
+        // Esto previene que el movimiento libre del joystick cierre el panel.
+        if (anyZoneTriggered) {
+            document.querySelectorAll('.control-panel').forEach(panel => {
+                panel.style.display = 'none';
+            });
+            if (activeZone) {
+                const panelEl = document.getElementById(activeZone.panelHtmlId);
+                if (panelEl) panelEl.style.display = 'block';
+            }
         }
     };
     const storeOriginalMaterialStates = () => {
@@ -98,7 +109,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!panel) return;
         panel.querySelector(".close-panel-btn")?.addEventListener("click", () => panel.style.display = "none");
         panel.querySelectorAll(".temp-btn").forEach(btn => {
-            btn.onclick = (e) => { // Usamos onclick para evitar duplicados en re-init parciales
+            btn.onclick = (e) => {
                 panel.querySelectorAll(".temp-btn").forEach(b => b.classList.remove("active"));
                 e.target.classList.add("active");
                 applyTemperatureToZone(zoneConfig, parseInt(e.target.dataset.temp));
@@ -131,18 +142,19 @@ document.addEventListener("DOMContentLoaded", () => {
                 let norm = Math.max(0, Math.min(1, 1 - (y - r.top) / r.height));
                 updateSlider(Math.min(zoneConfig.sliderViews.length - 1, Math.floor(norm * zoneConfig.sliderViews.length)));
             };
-            sliderCont.onmousedown = (e) => { dragging = true; handle(e.clientY); };
+            sliderCont.addEventListener('mousedown', (e) => { dragging = true; handle(e.clientY); });
             document.addEventListener("mousemove", (e) => dragging && handle(e.clientY));
             document.addEventListener("mouseup", () => dragging = false);
+            sliderCont.addEventListener('touchstart', (e) => { dragging = true; handle(e.touches[0].clientY); }, { passive: true });
+            document.addEventListener("touchmove", (e) => dragging && handle(e.touches[0].clientY), { passive: true });
         }
     };
     // =================================================================
-    // JOYSTICK PAD v2 (140px con Flechas)
+    // JOYSTICK PAD v3 (Optimizado para evitar congelamientos)
     // =================================================================
     const initJoystick = (viewer) => {
         const cameraSpeed = 2000;
         const drawInterval = 1000 / 30;
-        const _sab = '15px';
         const wCanvas = document.getElementById('walk-canvas');
         if (!wCanvas) return;
         const leftStick = document.createElement('div');
@@ -152,21 +164,18 @@ document.addEventListener("DOMContentLoaded", () => {
         let lsStartX, lsStartY, rsStartX, rsStartY;
         let lsTouchX = 0, lsTouchY = 0, rsTouchX = 0, rsTouchY = 0;
         let touches = [];
-        let isDrawing = false;
-        let cameraX, cameraY, cameraZ, cameraYaw, cameraYD, cameraPD;
-        class Camera {
-            constructor(p, r) { this.p = p; this.r = r; }
-            getCam() {
-                cameraX = this.p.x; cameraY = this.p.y; cameraZ = this.p.z;
-                cameraYaw = this.r.yaw; cameraYD = this.r.yawDeg; cameraPD = this.r.pitchDeg;
+        let isDragging = false;
+        // Variables de cámara persistentes
+        let camPos = { x: 0, y: 0, z: 0 };
+        let camRot = { yaw: 0, yawDeg: 0, pitchDeg: 0 };
+        const updateCamData = () => {
+            const p = viewer.getCameraPosition();
+            const r = viewer.getCameraRotation();
+            if (p && r) {
+                camPos = { ...p };
+                camRot = { ...r };
             }
-            setCam() {
-                let v = new window.WALK.View();
-                v.position.x = cameraX; v.position.y = cameraY; v.position.z = cameraZ;
-                v.rotation.yaw = cameraYaw; v.rotation.yawDeg = cameraYD; v.rotation.pitchDeg = cameraPD;
-                viewer.switchToView(v, 0);
-            }
-        }
+        };
         function createStick() {
             const SIZE = 140;
             const commonStyle = (el, id) => {
@@ -174,7 +183,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 el.style.position = 'absolute';
                 el.style.width = SIZE + 'px';
                 el.style.height = SIZE + 'px';
-                el.style.zIndex = '999999';
+                el.style.zIndex = '1000000'; // Por encima de todo
                 el.style.pointerEvents = 'auto';
                 el.style.touchAction = 'none';
                 el.style.userSelect = 'none';
@@ -234,53 +243,62 @@ document.addEventListener("DOMContentLoaded", () => {
             wCanvas.parentNode.appendChild(leftStick);
             wCanvas.parentNode.appendChild(rightStick);
         }
-        const start = (e, stick, isRight) => {
-            const cp = viewer.getCameraPosition(); const cr = viewer.getCameraRotation();
-            new Camera(cp, cr).getCam();
+        const onStart = (e, stick, isRight) => {
+            updateCamData();
             stick.style.opacity = 1;
             const t = e.changedTouches ? e.changedTouches[0] : e;
             if (isRight) { rsTouchID = t.identifier || -2; rsStartX = t.clientX; rsStartY = t.clientY; }
             else { lsTouchID = t.identifier || -1; lsStartX = t.clientX; lsStartY = t.clientY; }
-            if (!e.changedTouches) isDrawing = true;
+            isDragging = true;
             touches = e.touches || [];
         };
-        const move = (e) => {
-            if (e.changedTouches) { touches = e.touches; e.preventDefault(); }
-            else if (isDrawing) { lsTouchX = e.clientX - lsStartX; lsTouchY = lsStartY - e.clientY; }
+        const onMove = (e) => {
+            if (!isDragging) return;
+            if (e.changedTouches) {
+                touches = e.touches;
+            } else {
+                lsTouchX = e.clientX - lsStartX;
+                lsTouchY = lsStartY - e.clientY;
+            }
         };
-        const end = (e) => {
-            isDrawing = false;
+        const onEnd = (e) => {
+            isDragging = false;
             leftStick.style.opacity = 0.8; rightStick.style.opacity = 0.8;
             lsTouchX = lsTouchY = rsTouchX = rsTouchY = 0;
             lsTouchID = -1; rsTouchID = -2;
+            touches = [];
         };
         if (touchable) {
-            leftStick.ontouchstart = (e) => start(e, leftStick, false);
-            rightStick.ontouchstart = (e) => start(e, rightStick, true);
-            document.addEventListener("touchmove", move, { passive: false });
-            document.addEventListener("touchend", end);
+            leftStick.addEventListener("touchstart", (e) => onStart(e, leftStick, false), { passive: true });
+            rightStick.addEventListener("touchstart", (e) => onStart(e, rightStick, true), { passive: true });
+            document.addEventListener("touchmove", onMove, { passive: true });
+            document.addEventListener("touchend", onEnd);
         } else {
-            leftStick.onmousedown = (e) => start(e, leftStick, false);
-            document.addEventListener("mousemove", move);
-            document.addEventListener("mouseup", end);
+            leftStick.addEventListener("mousedown", (e) => onStart(e, leftStick, false));
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onEnd);
         }
         function loop() {
+            if (!isDragging) return;
             if (touchable && touches.length > 0) {
+                let moved = false;
                 for (let i = 0; i < touches.length; i++) {
                     const t = touches[i];
-                    if (t.identifier == lsTouchID) { lsTouchX = t.clientX - lsStartX; lsTouchY = lsStartY - t.clientY; }
-                    else if (t.identifier == rsTouchID) { rsTouchX = t.clientX - rsStartX; rsTouchY = rsStartY - t.clientY; }
+                    if (t.identifier == lsTouchID) { lsTouchX = t.clientX - lsStartX; lsTouchY = lsStartY - t.clientY; moved = true; }
+                    else if (t.identifier == rsTouchID) { rsTouchX = t.clientX - rsStartX; rsTouchY = rsStartY - t.clientY; moved = true; }
                 }
-                cameraX += (((Math.abs(cameraYaw) - Math.PI / 2) * (-1)) * (lsTouchX / cameraSpeed)) + ((Math.abs(Math.abs(Math.abs(cameraYaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(cameraYaw) / cameraYaw * (-1))) * (lsTouchY / cameraSpeed));
-                cameraY -= (((Math.abs(Math.abs(cameraYaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(cameraYaw) / cameraYaw)) * (lsTouchX / cameraSpeed)) - (((Math.abs(cameraYaw) - Math.PI / 2) * (-1)) * (lsTouchY / cameraSpeed));
-                cameraYD += rsTouchX * 20 / cameraSpeed * (-1);
-                cameraPD -= rsTouchY * 20 / cameraSpeed * (-1);
-                new Camera().setCam();
-            } else if (isDrawing) {
-                cameraX += (((Math.abs(cameraYaw) - Math.PI / 2) * (-1)) * (lsTouchX / cameraSpeed)) + ((Math.abs(Math.abs(Math.abs(cameraYaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(cameraYaw) / cameraYaw * (-1))) * (lsTouchY / cameraSpeed));
-                cameraY -= (((Math.abs(cameraYaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(cameraYaw) / cameraYaw) * (lsTouchX / cameraSpeed)) - (((Math.abs(cameraYaw) - Math.PI / 2) * (-1)) * (lsTouchY / cameraSpeed));
-                new Camera().setCam();
+                if (!moved) return;
             }
+            // Cálculo de movimiento basado en orientación (Mismo que original para funcionalidad)
+            camPos.x += (((Math.abs(camRot.yaw) - Math.PI / 2) * (-1)) * (lsTouchX / cameraSpeed)) + ((Math.abs(Math.abs(Math.abs(camRot.yaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(camRot.yaw) / camRot.yaw * (-1))) * (lsTouchY / cameraSpeed));
+            camPos.y -= (((Math.abs(Math.abs(camRot.yaw) - Math.PI / 2) - Math.PI / 2) * (Math.abs(camRot.yaw) / camRot.yaw)) * (lsTouchX / cameraSpeed)) - (((Math.abs(camRot.yaw) - Math.PI / 2) * (-1)) * (lsTouchY / cameraSpeed));
+            camRot.yawDeg += rsTouchX * 20 / cameraSpeed * (-1);
+            camRot.pitchDeg -= rsTouchY * 20 / cameraSpeed * (-1);
+            const v = new window.WALK.View();
+            v.position.x = camPos.x; v.position.y = camPos.y; v.position.z = camPos.z;
+            v.rotation.yaw = camRot.yaw; v.rotation.yawDeg = camRot.yawDeg; v.rotation.pitchDeg = camRot.pitchDeg;
+            // USAMOS switchToView SIN NOMBRE para evitar disparar updatePanelVisibility indeseadamente
+            viewer.switchToView(v, 0);
         }
         createStick();
         setInterval(loop, drawInterval);
@@ -294,7 +312,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 ZONES_CONFIG.forEach(initializePanelComponents);
                 initJoystick(viewer);
             });
-            // RESTAURADO: Listener para mostrar paneles al cambiar de vista
             viewer.onViewSwitchDone((viewName) => {
                 updatePanelVisibility(viewName);
             });
