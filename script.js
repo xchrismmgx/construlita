@@ -116,8 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (window.parent !== window) {
           window.parent.postMessage({ type: 'TEMP_CLICKED', temp: temp }, '*');
         }
-        // Mantener la funcionalidad actual de materiales si se desea, 
-        // o comentarla si el LUT será el único método de color.
+        // Mantener la funcionalidad actual de materiales si se desea
         applyTemperatureToZone(zone, parseInt(temp));
       };
     });
@@ -208,4 +207,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     } catch (e) {
       console.error("Error inicializando API Shapespark:", e);
-   
+    }
+  };
+
+  init();
+});
