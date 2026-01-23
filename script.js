@@ -193,9 +193,13 @@ document.addEventListener("DOMContentLoaded", () => {
         if (event.data.type === 'UPDATE_LUT' && viewer) {
           try {
             const dataUrl = event.data.dataUrl;
-            const texture = await viewer.createTextureFromUrl(dataUrl);
-            viewer.setPostProcessingConfig({ colorMap: texture });
-            viewer.requestFrame();
+            const img = new Image();
+            img.onload = () => {
+              const texture = viewer.createTextureFromHTMLImage(img, true);
+              viewer.setPostProcessingConfig({ colorMap: texture });
+              viewer.requestFrame();
+            };
+            img.src = dataUrl;
           } catch (err) {
             console.error("Error aplicando el LUT:", err);
           }
@@ -204,8 +208,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
     } catch (e) {
       console.error("Error inicializando API Shapespark:", e);
-    }
-  };
-
-  init();
-});
+   
