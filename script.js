@@ -1,251 +1,211 @@
 /**
- * IMPLEMENTACIÓN API SHAPESPARK - VERSIÓN 9.0 (ULTRA-PRECISION)
- * - Joystick D-PAD: Tamaño 95px, Z-Index 500.
- * - ESTÉTICA: B&W Minimalist (Sin recuadro azul de selección).
- * - VELOCIDAD: 50% más lenta que v8 (cameraSpeed 17000).
- * - FIX: Eliminación de Tap Highlight (Recuadro azul en móviles).
- * Verificación: Busca "--- VERSIÓN 9.0 CARGADA ---" en la consola.
+ * IMPLEMENTACIÓN API SHAPESPARK - ACTUALIZADO PARA EXTRA-ASSETS
+ * Este script gestiona la edición de materiales y la UI personalizada.
  */
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("🚀 --- VERSIÓN 9.0 CARGADA ---");
-    let viewer = null;
-    const GLOBAL_COLOR_INTENSITY = 0.5;
-    const ZONES_CONFIG = [
-        {
-            panelHtmlId: "container-sala",
-            triggerViews: ["panel_sala", "sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
-            materials: ["*40", "*50", "*60", "*70", "*80", "Aluminio", "mesita sala", "*30", "arte cuadro 2", "Concrete Bare Cast Murral"],
-            sliderViews: ["sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
-            viewLabels: ["10%", "40%", "60%", "80%", "100%"]
-        },
-        {
-            panelHtmlId: "container-cocina",
-            triggerViews: ["panel_cocina", "cocina_diez", "cocina_cuarenta", "cocina_sesenta", "cocina_ochenta", "cocina_cien"],
-            materials: ["Material_Cocina_Encimera", "Material_Cocina_Luz"],
-            sliderViews: ["cocina_diez", "cocina_cuarenta", "cocina_sesenta", "cocina_ochenta", "cocina_cien"],
-            viewLabels: ["10%", "40%", "60%", "80%", "100%"]
-        },
-        {
-            panelHtmlId: "container-cuarto",
-            triggerViews: ["panel_cuarto", "cuarto_diez", "cuarto_cuarenta", "cuarto_sesenta", "cuarto_ochenta", "cuarto_cien"],
-            materials: ["Material_Cama", "Material_Lampara_Cuarto"],
-            sliderViews: ["cuarto_diez", "cuarto_cuarenta", "cuarto_sesenta", "cuarto_ochenta", "cuarto_cien"],
-            viewLabels: ["10%", "40%", "60%", "80%", "100%"]
-        }
-    ];
-    const temperatureSettings = {
-        2700: { h: 0.016, s: 0.165, l: 0.48 },
-        3000: { h: 0.028, s: 0.11, l: 0.50 },
-        4000: { h: 0.04, s: 0.03, l: 0.52 },
-        6000: { h: 0.06, s: -0.19, l: 0.52 },
-        6500: { h: 0.068, s: -0.265, l: 0.555 },
+  let viewer = null;
+
+  // Factor de intensidad para el cálculo de Kelvin a RGB
+  const GLOBAL_COLOR_INTENSITY = 0.5;
+
+  // Configuración de Zonas (Misma lógica anterior para no romper funcionalidad)
+  const ZONES_CONFIG = [
+    {
+      panelHtmlId: "container-sala",
+      triggerViews: ["panel_sala", "sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
+      materials: ["*40", "*50", "*60", "*70", "*80", "Aluminio", "mesita sala", "*30", "arte cuadro 2", "Concrete Bare Cast Murral"],
+      sliderViews: ["sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
+      viewLabels: ["10%", "40%", "60%", "80%", "100%"]
+    },
+    {
+      panelHtmlId: "container-cocina",
+      triggerViews: ["panel_cocina", "cocina_diez", "cocina_cuarenta", "cocina_sesenta", "cocina_ochenta", "cocina_cien"],
+      materials: ["*11", "*12", "*13", "*14", "piso cocina", "mueble cocina"],
+      sliderViews: ["cocina_diez", "cocina_cuarenta", "cocina_sesenta", "cocina_ochenta", "cocina_cien"],
+      viewLabels: ["10%", "40%", "60%", "80%", "100%"]
+    },
+    {
+      panelHtmlId: "container-cuarto",
+      triggerViews: ["panel_cuarto", "cuarto_10", "cuarto_40", "cuarto_80"],
+      materials: ["*21", "*22", "cama", "pared cuarto"],
+      sliderViews: ["cuarto_10", "cuarto_40", "cuarto_80"],
+      viewLabels: ["10%", "40%", "80%"]
     }
-    // --- LÓGICA DE PANELES ---
-    const updatePanelVisibility = (viewName) => {
-        if (!viewName) return;
-        let activeZone = null;
-        let isThisAControlView = false;
-        ZONES_CONFIG.forEach(z => {
-            if (z.triggerViews.map(v => v.toLowerCase()).includes(viewName.toLowerCase())) {
-                activeZone = z;
-                isThisAControlView = true;
-            }
-        });
-        if (isThisAControlView) {
-            document.querySelectorAll('.control-panel').forEach(p => p.style.display = 'none');
-            if (activeZone) {
-                const el = document.getElementById(activeZone.panelHtmlId);
-                if (el) el.style.display = 'block';
-            }
+  ];
+
+  const originalMaterials = {};
+
+  // --- Utilidades de Color ---
+  const kelvinToRGB = (kelvin) => {
+    let temp = kelvin / 100;
+    let r, g, b;
+
+    if (temp <= 66) {
+      r = 255;
+      g = temp;
+      g = 99.4708025861 * Math.log(g) - 161.1195681661;
+      if (temp <= 19) {
+        b = 0;
+      } else {
+        b = temp - 10;
+        b = 138.5177312231 * Math.log(b) - 305.0447927307;
+      }
+    } else {
+      r = temp - 60;
+      r = 329.698727446 * Math.pow(r, -0.1332047592);
+      g = temp - 60;
+      g = 288.1221695283 * Math.pow(g, -0.0755148492);
+      b = 255;
+    }
+
+    const clamp = (v) => Math.min(255, Math.max(0, v)) / 255;
+    return { r: clamp(r), g: clamp(g), b: clamp(b) };
+  };
+
+  // --- Gestión de Materiales ---
+  const storeOriginalMaterialStates = () => {
+    ZONES_CONFIG.forEach(zone => {
+      zone.materials.forEach(matName => {
+        const mat = viewer.findMaterial(matName);
+        if (mat && !originalMaterials[matName]) {
+          originalMaterials[matName] = {
+            baseColor: mat.baseColor.clone(),
+            baseColorTexture: mat.baseColorTexture
+          };
         }
-    };
-    const applyTemperatureToZone = (zoneConfig, temperature) => {
-        const tempConfig = temperatureSettings[temperature];
-        if (!tempConfig) return;
-        const targetL = tempConfig.l !== undefined ? tempConfig.l : 0.5;
-        const adjustedSaturation = tempConfig.s * GLOBAL_COLOR_INTENSITY;
-        zoneConfig.materials.forEach((materialName) => {
-            const material = viewer.findMaterial(materialName);
-            if (material) {
-                if (material.baseColorTexture) {
-                    material.setTextureMapHslAdjustment("baseColorTexture", "h", tempConfig.h);
-                    material.setTextureMapHslAdjustment("baseColorTexture", "s", adjustedSaturation);
-                    material.setTextureMapHslAdjustment("baseColorTexture", "l", targetL);
-                    material.setTextureMapCorrectionTurnedOn("baseColorTexture", true);
-                } else {
-                    const hsl = material.baseColor.getHSL();
-                    hsl.h = tempConfig.h; hsl.s = adjustedSaturation; hsl.l = targetL;
-                    material.baseColor.setHSL(hsl);
-                }
-            }
-        });
+      });
+    });
+  };
+
+  const applyTemperatureToZone = (zone, kelvin) => {
+    const rgb = kelvinToRGB(kelvin);
+    zone.materials.forEach(matName => {
+      const mat = viewer.findMaterial(matName);
+      if (mat) {
+        mat.baseColor.setRGB(
+          rgb.r * GLOBAL_COLOR_INTENSITY,
+          rgb.g * GLOBAL_COLOR_INTENSITY,
+          rgb.b * GLOBAL_COLOR_INTENSITY
+        );
         viewer.requestFrame();
-    };
-    const initializePanelComponents = (zoneConfig) => {
-        const panel = document.getElementById(zoneConfig.panelHtmlId);
-        if (!panel) return;
-        panel.querySelector(".close-panel-btn")?.addEventListener("click", () => panel.style.display = "none");
-        panel.querySelectorAll(".temp-btn").forEach(btn => {
-            btn.onclick = (e) => {
-                panel.querySelectorAll(".temp-btn").forEach(b => b.classList.remove("active"));
-                e.target.classList.add("active");
-                applyTemperatureToZone(zoneConfig, parseInt(e.target.dataset.temp));
-            };
-        });
-        const sliderThumb = panel.querySelector(".vertical-slider-thumb");
-        const sliderProg = panel.querySelector(".vertical-slider-progress");
-        const percDisp = panel.querySelector(".current-view-percentage");
-        const labelsCont = panel.querySelector(".view-labels-container");
-        const sliderCont = panel.querySelector(".vertical-slider-container");
-        const updateSlider = (idx) => {
-            if (idx < 0 || idx >= zoneConfig.sliderViews.length) return;
-            const p = (idx / (zoneConfig.sliderViews.length - 1)) * 100;
-            if (sliderThumb) sliderThumb.style.bottom = `calc(${p}% - 9px)`;
-            if (sliderProg) sliderProg.style.height = `${p}%`;
-            if (percDisp) percDisp.textContent = zoneConfig.viewLabels[idx];
-            viewer.switchToView(zoneConfig.sliderViews[idx], 0);
-        };
-        if (sliderCont) {
-            labelsCont.innerHTML = "";
-            zoneConfig.viewLabels.forEach((txt, i) => {
-                const lbl = document.createElement("div");
-                lbl.className = "view-label"; lbl.textContent = txt;
-                lbl.style.bottom = `${(i / (zoneConfig.sliderViews.length - 1)) * 100}%`;
-                lbl.onclick = () => updateSlider(i);
-                labelsCont.appendChild(lbl);
-            });
-            let dragging = false;
-            const handle = (y) => {
-                const r = sliderCont.getBoundingClientRect();
-                let norm = Math.max(0, Math.min(1, 1 - (y - r.top) / r.height));
-                const idx = Math.min(zoneConfig.sliderViews.length - 1, Math.floor(norm * zoneConfig.sliderViews.length));
-                updateSlider(idx);
-            };
-            sliderCont.addEventListener('mousedown', (e) => { dragging = true; handle(e.clientY); });
-            document.addEventListener("mousemove", (e) => dragging && handle(e.clientY));
-            document.addEventListener("mouseup", () => dragging = false);
-            sliderCont.addEventListener('touchstart', (e) => { dragging = true; handle(e.touches[0].clientY); }, { passive: false });
-            document.addEventListener("touchmove", (e) => { if (dragging) { handle(e.touches[0].clientY); e.preventDefault(); } }, { passive: false });
-            document.addEventListener("touchend", () => dragging = false);
+      }
+    });
+  };
+
+  // --- UI & Eventos ---
+  const updatePanelVisibility = (viewName) => {
+    ZONES_CONFIG.forEach(zone => {
+      const panel = document.getElementById(zone.panelHtmlId);
+      if (zone.triggerViews.includes(viewName)) {
+        panel.style.display = "block";
+      } else {
+        panel.style.display = "none";
+      }
+    });
+  };
+
+  const initializePanelComponents = (zone) => {
+    const panel = document.getElementById(zone.panelHtmlId);
+    if (!panel) return;
+
+    // Botones de Temperatura
+    panel.querySelectorAll(".temp-btn").forEach(btn => {
+      btn.onclick = () => {
+        const temp = btn.dataset.temp;
+        // Notificar al padre (Webflow) para que gestione el LUT
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'TEMP_CLICKED', temp: temp }, '*');
         }
+        // Mantener la funcionalidad actual de materiales si se desea, 
+        // o comentarla si el LUT será el único método de color.
+        applyTemperatureToZone(zone, parseInt(temp));
+      };
+    });
+
+    // Botón Cerrar
+    panel.querySelector(".close-panel-btn").onclick = () => {
+      panel.style.display = "none";
     };
-    // --- JOYSTICK D-PAD v9 (ULTRA PRECISIÓN) ---
-    const initJoystick = (viewer) => {
-        const cameraSpeed = 17000; // 50% más lento que v8
-        const drawInterval = 1000 / 60;
-        const SIZE = 95;
-        const wCanvas = document.getElementById('walk-canvas');
-        if (!wCanvas) return;
-        const leftStick = document.createElement('div');
-        const rightStick = document.createElement('div');
-        let joystickState = {
-            left: { active: false, id: -1, startX: 0, startY: 0, dx: 0, dy: 0 },
-            right: { active: false, id: -1, startX: 0, startY: 0, dx: 0, dy: 0 }
-        };
-        const applyStyle = (el, id) => {
-            el.id = id; el.style.position = 'absolute'; el.style.width = SIZE + 'px'; el.style.height = SIZE + 'px';
-            el.style.zIndex = '500'; el.style.touchAction = 'none'; el.style.pointerEvents = 'auto';
-            el.style.userSelect = 'none'; el.style.opacity = '0.7'; el.style.cursor = 'pointer';
-            // FIX: Quitar recuadro azul de selección en móviles
-            el.style.webkitTapHighlightColor = 'transparent';
-            el.style.webkitUserSelect = 'none';
-            el.style.outline = 'none';
-            el.style.border = 'none';
-        };
-        applyStyle(leftStick, 'ls_v9'); applyStyle(rightStick, 'rs_v9');
-        const updateUI = () => {
-            if (window.innerWidth > window.innerHeight) {
-                leftStick.style.top = '50%'; leftStick.style.left = '40px'; leftStick.style.transform = 'translateY(-50%)';
-                rightStick.style.top = '50%'; rightStick.style.right = '40px'; rightStick.style.transform = 'translateY(-50%)';
-                rightStick.style.display = 'block';
-            } else {
-                leftStick.style.bottom = '30px'; leftStick.style.left = '50%'; leftStick.style.transform = 'translateX(-50%)';
-                leftStick.style.top = 'auto'; rightStick.style.display = 'none';
-            }
-        };
-        window.addEventListener('resize', updateUI); updateUI();
-        const drawDpad = () => {
-            const can = document.createElement('canvas'); can.width = can.height = SIZE;
-            const ctx = can.getContext('2d'); const c = SIZE / 2;
-            ctx.beginPath(); ctx.arc(c, c, SIZE * 0.4, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(15, 15, 15, 0.9)'; ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 3;
-            ctx.fill(); ctx.stroke();
-            ctx.fillStyle = 'white';
-            const s = 7; const d = SIZE * 0.28;
-            const drawA = (x, y, r) => {
-                ctx.save(); ctx.translate(x, y); ctx.rotate(r); ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s, s * 0.8); ctx.lineTo(-s, s * 0.8); ctx.closePath(); ctx.fill(); ctx.restore();
-            };
-            drawA(c, c - d, 0); drawA(c, c + d, Math.PI); drawA(c - d, c, -Math.PI / 2); drawA(c + d, c, Math.PI / 2);
-            ctx.beginPath(); ctx.arc(c, c, SIZE * 0.14, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; ctx.fill();
-            return can;
-        };
-        leftStick.appendChild(drawDpad()); rightStick.appendChild(drawDpad());
-        wCanvas.parentNode.appendChild(leftStick); wCanvas.parentNode.appendChild(rightStick);
-        const handleStart = (e, side) => {
-            const t = e.changedTouches ? e.changedTouches[0] : e;
-            const st = joystickState[side];
-            st.active = true; st.id = t.identifier === undefined ? 'mouse' : t.identifier;
-            st.startX = t.clientX; st.startY = t.clientY; st.dx = 0; st.dy = 0;
-        };
-        const handleMove = (e) => {
-            const ts = e.changedTouches || [e];
-            for (let i = 0; i < ts.length; i++) {
-                const t = ts[i]; const id = t.identifier === undefined ? 'mouse' : t.identifier;
-                if (joystickState.left.active && id === joystickState.left.id) {
-                    joystickState.left.dx = t.clientX - joystickState.left.startX;
-                    joystickState.left.dy = t.clientY - joystickState.left.startY;
-                }
-                if (joystickState.right.active && id === joystickState.right.id) {
-                    joystickState.right.dx = t.clientX - joystickState.right.startX;
-                    joystickState.right.dy = joystickState.right.startY - t.clientY;
-                }
-            }
-        };
-        const handleEnd = (e) => {
-            const ts = e.changedTouches || [e];
-            for (let i = 0; i < ts.length; i++) {
-                const id = ts[i].identifier === undefined ? 'mouse' : ts[i].identifier;
-                if (id === joystickState.left.id) { joystickState.left.active = false; joystickState.left.id = -1; joystickState.left.dx = 0; joystickState.left.dy = 0; }
-                if (id === joystickState.right.id) { joystickState.right.active = false; joystickState.right.id = -1; joystickState.right.dx = 0; joystickState.right.dy = 0; }
-            }
-            if (!e.changedTouches) { joystickState.left.active = false; joystickState.right.active = false; }
-        };
-        leftStick.addEventListener('touchstart', (e) => handleStart(e, 'left'), { passive: true });
-        rightStick.addEventListener('touchstart', (e) => handleStart(e, 'right'), { passive: true });
-        document.addEventListener('touchmove', handleMove, { passive: true });
-        document.addEventListener('touchend', handleEnd); document.addEventListener('touchcancel', handleEnd);
-        leftStick.addEventListener('mousedown', (e) => handleStart(e, 'left'));
-        document.addEventListener('mousemove', handleMove); document.addEventListener('mouseup', handleEnd);
-        setInterval(() => {
-            if (!joystickState.left.active && !joystickState.right.active) return;
-            const p = viewer.getCameraPosition(); const r = viewer.getCameraRotation();
-            if (!p || !r) return;
-            const s = 15 / cameraSpeed; const cY = Math.cos(r.yaw); const sY = Math.sin(r.yaw);
-            let mx = 0, my = 0;
-            if (joystickState.left.active) {
-                mx = (sY * joystickState.left.dy + cY * joystickState.left.dx) * s;
-                my = (-cY * joystickState.left.dy + sY * joystickState.left.dx) * s;
-            }
-            let ry = 0, rp = 0;
-            if (joystickState.right.active) {
-                ry = joystickState.right.dx * 30 / cameraSpeed;
-                rp = joystickState.right.dy * 30 / cameraSpeed;
-            }
-            const v = new window.WALK.View();
-            v.position.x = p.x + mx; v.position.y = p.y + my; v.position.z = p.z;
-            v.rotation.yawDeg = r.yawDeg - ry; v.rotation.pitchDeg = r.pitchDeg + rp;
-            viewer.switchToView(v, 0);
-        }, drawInterval);
+
+    // Botón Reset
+    panel.querySelector(".reset-btn").onclick = () => {
+      if (window.parent !== window) {
+        window.parent.postMessage({ type: 'RESET_TEMP' }, '*');
+      }
+      zone.materials.forEach(matName => {
+        const mat = viewer.findMaterial(matName);
+        const orig = originalMaterials[matName];
+        if (mat && orig) {
+          mat.baseColor.copy(orig.baseColor);
+          viewer.requestFrame();
+        }
+      });
     };
-    const init = () => {
-        if (!window.WALK) return setTimeout(init, 100);
-        viewer = WALK.getViewer(); viewer.setAllMaterialsEditable();
-        viewer.onSceneReadyToDisplay(() => {
-            ZONES_CONFIG.forEach(z => initializePanelComponents(z));
-            initJoystick(viewer);
-        });
-        viewer.onViewSwitchDone(updatePanelVisibility);
+
+    // Lógica de Sliders (Cámaras/Vistas)
+    const track = panel.querySelector(".vertical-slider-track");
+    const thumb = panel.querySelector(".vertical-slider-thumb");
+    const progress = panel.querySelector(".vertical-slider-progress");
+    const labelDisplay = panel.querySelector(".current-view-percentage");
+
+    const updateSliderUI = (percent) => {
+      const p = Math.max(0, Math.min(100, percent));
+      thumb.style.bottom = `${p}%`;
+      progress.style.height = `${p}%`;
+
+      const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
+      labelDisplay.innerText = zone.viewLabels[index];
     };
-    init();
+
+    track.onclick = (e) => {
+      const rect = track.getBoundingClientRect();
+      const p = ((rect.bottom - e.clientY) / rect.height) * 100;
+      updateSliderUI(p);
+      const viewIndex = Math.round((p / 100) * (zone.sliderViews.length - 1));
+      viewer.switchToView(zone.sliderViews[viewIndex]);
+    };
+  };
+
+  // --- Inicialización Principal ---
+  const WALK = window.WALK || {};
+
+  const init = () => {
+    try {
+      viewer = WALK.getViewer();
+      if (!viewer) {
+        setTimeout(init, 100);
+        return;
+      }
+
+      viewer.setAllMaterialsEditable();
+
+      viewer.onSceneReadyToDisplay(() => {
+        storeOriginalMaterialStates();
+        ZONES_CONFIG.forEach(zone => initializePanelComponents(zone));
+      });
+
+      viewer.onViewSwitchDone((viewName) => {
+        updatePanelVisibility(viewName);
+      });
+
+      // --- Manejo de mensajes del Padre (LUT System) ---
+      window.addEventListener('message', async (event) => {
+        if (event.data.type === 'UPDATE_LUT' && viewer) {
+          try {
+            const dataUrl = event.data.dataUrl;
+            const texture = await viewer.createTextureFromUrl(dataUrl);
+            viewer.setPostProcessingConfig({ colorMap: texture });
+            viewer.requestFrame();
+          } catch (err) {
+            console.error("Error aplicando el LUT:", err);
+          }
+        }
+      });
+
+    } catch (e) {
+      console.error("Error inicializando API Shapespark:", e);
+    }
+  };
+
+  init();
 });
