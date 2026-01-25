@@ -1,6 +1,7 @@
 /**
- * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS + JOYSTICKS
- * Script completo con temperatura, joysticks y efecto head bob
+ * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS + JOYSTICKS (REFACTORIZADO)
+ * Este script gestiona materiales, aplica un filtro de color global y navegación por joystick.
+ * Refactorizado usando enfoque de eventos de teclado para mayor compatibilidad.
  */
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
@@ -42,7 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.body.appendChild(overlay);
 
   const TEMP_CONFIG = {
-    '2700': { color: '#fea32c', intensity: 0.55 },
+    '2700': { color: '#fea32c', intensity: 0.40 },
     '3000': { color: '#ffde65', intensity: 0.20 },
     '4000': { color: '#ffffff', intensity: 0.50 },
     '6000': { color: '#90dffe', intensity: 0.50 }
@@ -77,37 +78,27 @@ document.addEventListener("DOMContentLoaded", () => {
   const initializePanelComponents = (zone) => {
     const panel = document.getElementById(zone.panelHtmlId);
     if (!panel) return;
-
     panel.querySelectorAll(".temp-btn").forEach(btn => {
       btn.onclick = () => applyColorEffect(btn.dataset.temp);
     });
-
     panel.querySelector(".close-panel-btn").onclick = () => panel.style.display = "none";
-
     panel.querySelector(".reset-btn").onclick = () => {
       overlay.style.opacity = 0;
       zone.materials.forEach(matName => {
         const mat = viewer.findMaterial(matName);
         const orig = originalMaterials[matName];
-        if (mat && orig) {
-          mat.baseColor.copy(orig.baseColor);
-          viewer.requestFrame();
-        }
+        if (mat && orig) { mat.baseColor.copy(orig.baseColor); viewer.requestFrame(); }
       });
     };
-
     const track = panel.querySelector(".vertical-slider-track");
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
     const labelDisplay = panel.querySelector(".current-view-percentage");
-
     const updateSliderUI = (percent) => {
       const p = Math.max(0, Math.min(100, percent));
-      thumb.style.bottom = `${p}%`;
-      progress.style.height = `${p}%`;
+      thumb.style.bottom = `${p}%`; progress.style.height = `${p}%`;
       labelDisplay.innerText = zone.viewLabels[Math.round((p / 100) * (zone.viewLabels.length - 1))];
     };
-
     track.onclick = (e) => {
       const rect = track.getBoundingClientRect();
       const p = ((rect.bottom - e.clientY) / rect.height) * 100;
@@ -116,27 +107,45 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   };
 
-  // --- JOYSTICKS CON SIMULACIÓN DE TECLADO ---
-  class Key {
+  // --- SISTEMA DE JOYSTICKS REFACTORIZADO ---
+
+  // Clase auxiliar para simular eventos de teclado (enfoque del código referenciado)
+  class VirtualKey {
     constructor(keyCode) {
       this.keyCode = keyCode;
+      this.canvas = document.getElementById('walk-canvas');
     }
     down() {
-      document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: this.keyCode, bubbles: true, cancelable: true }));
+      if (this.canvas) {
+        this.canvas.dispatchEvent(new KeyboardEvent('keydown', {
+          keyCode: this.keyCode, bubbles: true, cancelable: true
+        }));
+      }
     }
     up() {
-      document.dispatchEvent(new KeyboardEvent('keyup', { keyCode: this.keyCode, bubbles: true, cancelable: true }));
+      if (this.canvas) {
+        this.canvas.dispatchEvent(new KeyboardEvent('keyup', {
+          keyCode: this.keyCode, bubbles: true, cancelable: true
+        }));
+      }
     }
   }
+
+  // Teclas virtuales para movimiento (W, A, S, D) y rotación (flechas)
+  const keys = {
+    forward: new VirtualKey(87),   // W
+    backward: new VirtualKey(83),  // S
+    left: new VirtualKey(65),      // A
+    right: new VirtualKey(68),     // D
+    lookLeft: new VirtualKey(37),  // Flecha Izquierda
+    lookRight: new VirtualKey(39), // Flecha Derecha
+    lookUp: new VirtualKey(38),    // Flecha Arriba
+    lookDown: new VirtualKey(40)   // Flecha Abajo
+  };
 
   const joystickStates = {
     left: { active: false, x: 0, y: 0 },
     right: { active: false, x: 0, y: 0 }
-  };
-
-  const activeKeys = {
-    W: new Key(87), S: new Key(83), A: new Key(65), D: new Key(68),
-    ArrowLeft: new Key(37), ArrowRight: new Key(39)
   };
 
   const setupJoystick = (id, stateKey) => {
@@ -156,13 +165,19 @@ document.addEventListener("DOMContentLoaded", () => {
       const centerY = rect.top + rect.height / 2;
       const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
       const clientY = (e.touches ? e.touches[0].clientY : e.clientY);
+
       let dx = clientX - centerX;
       let dy = clientY - centerY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const maxDist = 50;
-      if (dist > maxDist) { dx *= maxDist / dist; dy *= maxDist / dist; }
+
+      if (dist > maxDist) {
+        dx *= maxDist / dist;
+        dy *= maxDist / dist;
+      }
+
       joystickStates[stateKey].x = dx / maxDist;
-      joystickStates[stateKey].y = -dy / maxDist;
+      joystickStates[stateKey].y = dy / maxDist; // Sin inversión
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
     };
 
@@ -171,6 +186,13 @@ document.addEventListener("DOMContentLoaded", () => {
       joystickStates[stateKey].x = 0;
       joystickStates[stateKey].y = 0;
       knob.style.transform = 'translate(0, 0)';
+
+      // Liberar todas las teclas cuando se suelta el joystick
+      if (stateKey === 'left') {
+        keys.forward.up(); keys.backward.up(); keys.left.up(); keys.right.up();
+      } else {
+        keys.lookLeft.up(); keys.lookRight.up(); keys.lookUp.up(); keys.lookDown.up();
+      }
     };
 
     knob.addEventListener('mousedown', handleStart);
@@ -181,74 +203,104 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener('touchend', handleEnd);
   };
 
-  // Head Bob
-  let headBobTime = 0;
-  const headBobSpeed = 7;
-  const headBobAmount = 0.015;
+  // Loop de actualización basado en estados del joystick
+  const deadzone = 0.1; // Zona muerta para evitar drift
 
   const joystickUpdateLoop = () => {
-    let isMoving = false;
-    const threshold = 0.1;
-
+    // Joystick Izquierdo: Movimiento (WASD)
     if (joystickStates.left.active) {
-      if (joystickStates.left.y > threshold) {
-        activeKeys.W.down(); activeKeys.S.up(); isMoving = true;
-      } else if (joystickStates.left.y < -threshold) {
-        activeKeys.S.down(); activeKeys.W.up(); isMoving = true;
+      const x = joystickStates.left.x;
+      const y = joystickStates.left.y;
+
+      // Adelante/Atrás (Eje Y)
+      if (y < -deadzone) {
+        keys.forward.down();
+        keys.backward.up();
+      } else if (y > deadzone) {
+        keys.backward.down();
+        keys.forward.up();
       } else {
-        activeKeys.W.up(); activeKeys.S.up();
+        keys.forward.up();
+        keys.backward.up();
       }
 
-      if (joystickStates.left.x < -threshold) {
-        activeKeys.A.down(); activeKeys.D.up(); isMoving = true;
-      } else if (joystickStates.left.x > threshold) {
-        activeKeys.D.down(); activeKeys.A.up(); isMoving = true;
+      // Izquierda/Derecha (Eje X)
+      if (x < -deadzone) {
+        keys.left.down();
+        keys.right.up();
+      } else if (x > deadzone) {
+        keys.right.down();
+        keys.left.up();
       } else {
-        activeKeys.A.up(); activeKeys.D.up();
+        keys.left.up();
+        keys.right.up();
       }
     } else {
-      activeKeys.W.up(); activeKeys.S.up(); activeKeys.A.up(); activeKeys.D.up();
+      keys.forward.up(); keys.backward.up(); keys.left.up(); keys.right.up();
     }
 
+    // Joystick Derecho: Mirar (Flechas)
     if (joystickStates.right.active) {
-      if (joystickStates.right.x < -threshold) {
-        activeKeys.ArrowLeft.down(); activeKeys.ArrowRight.up();
-      } else if (joystickStates.right.x > threshold) {
-        activeKeys.ArrowRight.down(); activeKeys.ArrowLeft.up();
+      const x = joystickStates.right.x;
+      const y = joystickStates.right.y;
+
+      // Arriba/Abajo (Eje Y)
+      if (y < -deadzone) {
+        keys.lookUp.down();
+        keys.lookDown.up();
+      } else if (y > deadzone) {
+        keys.lookDown.down();
+        keys.lookUp.up();
       } else {
-        activeKeys.ArrowLeft.up(); activeKeys.ArrowRight.up();
+        keys.lookUp.up();
+        keys.lookDown.up();
+      }
+
+      // Izquierda/Derecha (Eje X)
+      if (x < -deadzone) {
+        keys.lookLeft.down();
+        keys.lookRight.up();
+      } else if (x > deadzone) {
+        keys.lookRight.down();
+        keys.lookLeft.up();
+      } else {
+        keys.lookLeft.up();
+        keys.lookRight.up();
       }
     } else {
-      activeKeys.ArrowLeft.up(); activeKeys.ArrowRight.up();
-    }
-
-    if (viewer && isMoving) {
-      headBobTime += 0.016;
-      const bobOffset = Math.sin(headBobTime * headBobSpeed) * headBobAmount;
-      const currentPos = viewer.getCameraPosition();
-      const newView = new WALK.View();
-      newView.position.x = currentPos.x;
-      newView.position.y = currentPos.y + bobOffset;
-      newView.position.z = currentPos.z;
-      const currentRot = viewer.getCameraRotation();
-      newView.rotation.yaw = currentRot.yaw;
-      newView.rotation.pitch = currentRot.pitch;
-      newView.rotation.roll = currentRot.roll;
-      viewer.switchToView(newView, 0);
-    } else {
-      headBobTime = 0;
+      keys.lookLeft.up(); keys.lookRight.up(); keys.lookUp.up(); keys.lookDown.up();
     }
 
     requestAnimationFrame(joystickUpdateLoop);
   };
 
+  // --- Inicialización ---
   const WALK = window.WALK || {};
   const init = () => {
     try {
       viewer = WALK.getViewer();
       if (!viewer) { setTimeout(init, 100); return; }
+
       viewer.setAllMaterialsEditable();
+
+      // Ajustar velocidades de movimiento de cámara (similar al código referenciado)
+      WALK.CAMERA_FULL_ACCELERATION_TIME = 0.75;
+      WALK.CAMERA_ARROWS_TURN_SPEED = 0.2618; // ~15 grados (más lento, 50% del original)
+
       setupJoystick('left', 'left');
       setupJoystick('right', 'right');
       joystickUpdateLoop();
-   
+
+      viewer.onSceneReadyToDisplay(() => {
+        storeOriginalMaterialStates();
+        ZONES_CONFIG.forEach(initializePanelComponents);
+      });
+
+      viewer.onViewSwitchDone(updatePanelVisibility);
+    } catch (e) {
+      console.error("Error en script:", e);
+    }
+  };
+
+  init();
+});
