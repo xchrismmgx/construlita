@@ -1,12 +1,7 @@
-/**
- * IMPLEMENTACIÓN API SHAPESPARK - ACTUALIZADO PARA EXTRA-ASSETS
- * Este script gestiona la edición de materiales y la UI personalizada.
- */
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
-  // Factor de intensidad para el cálculo de Kelvin a RGB
   const GLOBAL_COLOR_INTENSITY = 0.5;
-  // Configuración de Zonas (Misma lógica anterior para no romper funcionalidad)
+
   const ZONES_CONFIG = [
     {
       panelHtmlId: "container-sala",
@@ -30,95 +25,70 @@ document.addEventListener("DOMContentLoaded", () => {
       viewLabels: ["10%", "40%", "80%"]
     }
   ];
+
   const originalMaterials = {};
-  // --- Utilidades de Color ---
+
   const kelvinToRGB = (kelvin) => {
     let temp = kelvin / 100;
     let r, g, b;
     if (temp <= 66) {
       r = 255;
-      g = temp;
-      g = 99.4708025861 * Math.log(g) - 161.1195681661;
-      if (temp <= 19) {
-        b = 0;
-      } else {
-        b = temp - 10;
-        b = 138.5177312231 * Math.log(b) - 305.0447927307;
-      }
+      g = 99.4708025861 * Math.log(temp) - 161.1195681661;
+      b = temp <= 19 ? 0 : 138.5177312231 * Math.log(temp - 10) - 305.0447927307;
     } else {
-      r = temp - 60;
-      r = 329.698727446 * Math.pow(r, -0.1332047592);
-      g = temp - 60;
-      g = 288.1221695283 * Math.pow(g, -0.0755148492);
+      r = 329.698727446 * Math.pow(temp - 60, -0.1332047592);
+      g = 288.1221695283 * Math.pow(temp - 60, -0.0755148492);
       b = 255;
     }
     const clamp = (v) => Math.min(255, Math.max(0, v)) / 255;
     return { r: clamp(r), g: clamp(g), b: clamp(b) };
   };
-  // --- Gestión de Materiales ---
+
   const storeOriginalMaterialStates = () => {
     ZONES_CONFIG.forEach(zone => {
       zone.materials.forEach(matName => {
         const mat = viewer.findMaterial(matName);
         if (mat && !originalMaterials[matName]) {
-          originalMaterials[matName] = {
-            baseColor: mat.baseColor.clone(),
-            baseColorTexture: mat.baseColorTexture
-          };
+          originalMaterials[matName] = { baseColor: mat.baseColor.clone() };
         }
       });
     });
   };
+
   const applyTemperatureToZone = (zone, kelvin) => {
     const rgb = kelvinToRGB(kelvin);
     zone.materials.forEach(matName => {
       const mat = viewer.findMaterial(matName);
       if (mat) {
-        mat.baseColor.setRGB(
-          rgb.r * GLOBAL_COLOR_INTENSITY,
-          rgb.g * GLOBAL_COLOR_INTENSITY,
-          rgb.b * GLOBAL_COLOR_INTENSITY
-        );
+        mat.baseColor.setRGB(rgb.r * GLOBAL_COLOR_INTENSITY, rgb.g * GLOBAL_COLOR_INTENSITY, rgb.b * GLOBAL_COLOR_INTENSITY);
         viewer.requestFrame();
       }
     });
   };
-  // --- UI & Eventos ---
+
   const updatePanelVisibility = (viewName) => {
     ZONES_CONFIG.forEach(zone => {
       const panel = document.getElementById(zone.panelHtmlId);
-      if (zone.triggerViews.includes(viewName)) {
-        panel.style.display = "block";
-      } else {
-        panel.style.display = "none";
-      }
+      if (panel) panel.style.display = zone.triggerViews.includes(viewName) ? "block" : "none";
     });
   };
+
   const initializePanelComponents = (zone) => {
     const panel = document.getElementById(zone.panelHtmlId);
     if (!panel) return;
-    // Botones de Temperatura
+
     panel.querySelectorAll(".temp-btn").forEach(btn => {
       btn.onclick = () => {
         const temp = btn.dataset.temp;
-        // Notificar al padre (Webflow) para que gestione el LUT
-        if (window.parent !== window) {
-          window.parent.postMessage({ type: 'TEMP_CLICKED', temp: temp }, '*');
-        }
-        // Mantener la funcionalidad actual de materiales si se desea, 
-        // o comentarla si el LUT será el único método de color.
+        applyOverlay(temp);
         applyTemperatureToZone(zone, parseInt(temp));
       };
     });
-    // Botón Cerrar
-    panel.querySelector(".close-panel-btn").onclick = () => {
-      panel.style.display = "none";
-    };
-    // Botón Reset
+
+    panel.querySelector(".close-panel-btn").onclick = () => panel.style.display = "none";
+
     panel.querySelector(".reset-btn").onclick = () => {
-      if (window.parent !== window) {
-        window.parent.postMessage({ type: 'RESET_TEMP' }, '*');
-      }
+      overlay.style.opacity = 0;
       zone.materials.forEach(matName => {
         const mat = viewer.findMaterial(matName);
         const orig = originalMaterials[matName];
@@ -128,11 +98,12 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
     };
-    // Lógica de Sliders (Cámaras/Vistas)
+
     const track = panel.querySelector(".vertical-slider-track");
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
     const labelDisplay = panel.querySelector(".current-view-percentage");
+
     const updateSliderUI = (percent) => {
       const p = Math.max(0, Math.min(100, percent));
       thumb.style.bottom = `${p}%`;
@@ -140,71 +111,49 @@ document.addEventListener("DOMContentLoaded", () => {
       const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
       labelDisplay.innerText = zone.viewLabels[index];
     };
+
     track.onclick = (e) => {
       const rect = track.getBoundingClientRect();
       const p = ((rect.bottom - e.clientY) / rect.height) * 100;
       updateSliderUI(p);
-      const viewIndex = Math.round((p / 100) * (zone.sliderViews.length - 1));
-      viewer.switchToView(zone.sliderViews[viewIndex]);
+      viewer.switchToView(zone.sliderViews[Math.round((p / 100) * (zone.sliderViews.length - 1))]);
     };
   };
-  // --- Inicialización Principal ---
+
+  const overlay = document.createElement('div');
+  overlay.id = 'temp-overlay';
+  Object.assign(overlay.style, {
+    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+    pointerEvents: 'none', zIndex: 9999, mixBlendMode: 'color',
+    transition: 'background-color 0.5s ease, opacity 0.5s ease', opacity: 0
+  });
+  document.body.appendChild(overlay);
+
+  const TEMP_COLORS = {
+    '2700': { color: '#ff8a00', intensity: 0.10 },
+    '3000': { color: '#ffb400', intensity: 0.20 },
+    '4000': { color: '#ffffff', intensity: 0.50 },
+    '6000': { color: '#0070ff', intensity: 0.95 }
+  };
+
+  const applyOverlay = (temp) => {
+    const config = TEMP_COLORS[temp];
+    if (config) {
+      overlay.style.backgroundColor = config.color;
+      overlay.style.opacity = config.intensity;
+    }
+  };
+
   const WALK = window.WALK || {};
   const init = () => {
-    try {
-      viewer = WALK.getViewer();
-      if (!viewer) {
-        setTimeout(init, 100);
-        return;
-      }
-      viewer.setAllMaterialsEditable();
-      viewer.onSceneReadyToDisplay(() => {
-        storeOriginalMaterialStates();
-        ZONES_CONFIG.forEach(zone => initializePanelComponents(zone));
-      });
-      viewer.onViewSwitchDone((viewName) => {
-        updatePanelVisibility(viewName);
-      });
-      // --- Sistema de Overlay para Temperatura (Alternativa a LUT) ---
-      const overlay = document.createElement('div');
-      overlay.id = 'temp-overlay';
-      Object.assign(overlay.style, {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-        zIndex: 9999,
-        mixBlendMode: 'color', // 'color' o 'soft-light' para un efecto natural
-        transition: 'background-color 0.5s ease, opacity 0.5s ease',
-        opacity: 0
-      });
-      document.body.appendChild(overlay);
-      const TEMP_COLORS = {
-        '2700': { color: '#ff8a00', intensity: 0.10 },
-        '3000': { color: '#ffb400', intensity: 0.20 },
-        '4000': { color: '#ffffff', intensity: 0.50 },
-        '6000': { color: '#0070ff', intensity: 0.95 }
-      };
-      const applyOverlay = (temp) => {
-        const config = TEMP_COLORS[temp];
-        if (config) {
-          overlay.style.backgroundColor = config.color;
-          overlay.style.opacity = config.intensity;
-        }
-      };
-      // --- Manejo de mensajes del Padre (Webflow) ---
-      window.addEventListener('message', (event) => {
-        if (event.data.type === 'TEMP_CLICKED') {
-          applyOverlay(event.data.temp);
-        } else if (event.data.type === 'RESET_TEMP') {
-          overlay.style.opacity = 0;
-        }
-      });
-    } catch (e) {
-      console.error("Error inicializando API Shapespark:", e);
-    }
+    viewer = WALK.getViewer();
+    if (!viewer) { setTimeout(init, 100); return; }
+    viewer.setAllMaterialsEditable();
+    viewer.onSceneReadyToDisplay(() => {
+      storeOriginalMaterialStates();
+      ZONES_CONFIG.forEach(z => initializePanelComponents(z));
+    });
+    viewer.onViewSwitchDone(updatePanelVisibility);
   };
   init();
 });
