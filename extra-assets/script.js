@@ -143,33 +143,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const cameraUpdateLoop = () => {
     if (!viewer) { requestAnimationFrame(cameraUpdateLoop); return; }
-
     let needsUpdate = false;
     const camPos = viewer.getCameraPosition();
     const camRot = viewer.getCameraRotation();
-
-    // Joystick Izquierdo: Movimiento (4 vías)
     if (joystickStates.left.active) {
       const yaw = camRot.yaw;
-      const f = joystickStates.left.y; // Adelante/Atrás
-      const s = joystickStates.left.x; // Izquierda/Derecha
-
-      // Vector de movimiento rotado según Yaw
-      camPos.x += (Math.sin(yaw) * f + Math.cos(yaw) * s) * moveSpeed;
-      camPos.z += (Math.cos(yaw) * f - Math.sin(yaw) * s) * moveSpeed;
+      camPos.x += (Math.sin(yaw) * joystickStates.left.y + Math.cos(yaw) * joystickStates.left.x) * moveSpeed;
+      camPos.z += (Math.cos(yaw) * joystickStates.left.y - Math.sin(yaw) * joystickStates.left.x) * moveSpeed;
       needsUpdate = true;
     }
-
-    // Joystick Derecho: Mirar
     if (joystickStates.right.active) {
       camRot.yaw -= joystickStates.right.x * rotateSpeed;
       camRot.pitch += joystickStates.right.y * rotateSpeed;
       camRot.pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, camRot.pitch));
       needsUpdate = true;
     }
-
     if (needsUpdate) {
-      // API CORREGIDA: Usar WALK.View y switchToView
       const newView = new WALK.View();
       newView.position.x = camPos.x;
       newView.position.y = camPos.y;
@@ -177,7 +166,7 @@ document.addEventListener("DOMContentLoaded", () => {
       newView.rotation.yaw = camRot.yaw;
       newView.rotation.pitch = camRot.pitch;
       newView.rotation.roll = camRot.roll;
-      viewer.switchToView(newView, 0); // 0 = transición instantánea
+      viewer.switchToView(newView, 0);
       viewer.requestFrame();
     }
     requestAnimationFrame(cameraUpdateLoop);
