@@ -42,10 +42,10 @@ document.addEventListener("DOMContentLoaded", () => {
   document.body.appendChild(overlay);
 
   const TEMP_CONFIG = {
-    '2700': { color: '#fea32c', intensity: 0.30 },
+    '2700': { color: '#fea32c', intensity: 0.40 },
     '3000': { color: '#ffde65', intensity: 0.20 },
     '4000': { color: '#ffffff', intensity: 0.50 },
-    '6000': { color: '#90dffe', intensity: 0.70 }
+    '6000': { color: '#90dffe', intensity: 0.50 }
   };
 
   const applyColorEffect = (temp) => {
@@ -138,8 +138,8 @@ document.addEventListener("DOMContentLoaded", () => {
     knob.addEventListener('touchstart', handleStart); window.addEventListener('touchmove', handleMove, { passive: false }); window.addEventListener('touchend', handleEnd);
   };
 
-  const moveSpeed = 0.10;
-  const rotateSpeed = 0.035;
+  const moveSpeed = 0.05;
+  const rotateSpeed = 0.0175;
 
   const cameraUpdateLoop = () => {
     if (!viewer) { requestAnimationFrame(cameraUpdateLoop); return; }
@@ -148,8 +148,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const camRot = viewer.getCameraRotation();
     if (joystickStates.left.active) {
       const yaw = camRot.yaw;
-      camPos.x += (Math.sin(yaw) * joystickStates.left.y + Math.cos(yaw) * joystickStates.left.x) * moveSpeed;
-      camPos.z += (Math.cos(yaw) * joystickStates.left.y - Math.sin(yaw) * joystickStates.left.x) * moveSpeed;
+      const f = -joystickStates.left.y;
+      const s = joystickStates.left.x;
+      camPos.x += (Math.sin(yaw) * f + Math.cos(yaw) * s) * moveSpeed;
+      camPos.z += (Math.cos(yaw) * f - Math.sin(yaw) * s) * moveSpeed;
       needsUpdate = true;
     }
     if (joystickStates.right.active) {
@@ -160,8 +162,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (needsUpdate) {
       const newView = new WALK.View();
-      newView.position.copy(camPos);
-      newView.rotation.copy(camRot);
+      newView.position.x = camPos.x;
+      newView.position.y = camPos.y;
+      newView.position.z = camPos.z;
+      newView.rotation.yaw = camRot.yaw;
+      newView.rotation.pitch = camRot.pitch;
+      newView.rotation.roll = camRot.roll;
       viewer.switchToView(newView, 0);
       viewer.requestFrame();
     }
