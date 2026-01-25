@@ -1,11 +1,12 @@
 /**
- * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS + JOYSTICKS
- * Script completo con temperatura, joysticks y efecto head bob
+ * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS
+ * Este script gestiona materiales y aplica un filtro de color global.
  */
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
   const GLOBAL_COLOR_INTENSITY = 0.5;
 
+  // Configuración de Zonas
   const ZONES_CONFIG = [
     {
       panelHtmlId: "container-sala",
@@ -32,20 +33,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const originalMaterials = {};
 
+  // --- Sistema de Overlay (Tinte de Color) ---
   const overlay = document.createElement('div');
   overlay.id = 'global-temp-overlay';
   Object.assign(overlay.style, {
-    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-    pointerEvents: 'none', zIndex: 9999, mixBlendMode: 'color',
-    transition: 'background-color 0.8s ease, opacity 0.8s ease', opacity: 0
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none',
+    zIndex: 9999,
+    mixBlendMode: 'color',
+    transition: 'background-color 0.8s ease, opacity 0.8s ease',
+    opacity: 0
   });
   document.body.appendChild(overlay);
 
   const TEMP_CONFIG = {
-    '2700': { color: '#fea32c', intensity: 0.55 },
-    '3000': { color: '#ffde65', intensity: 0.20 },
+    '2700': { color: '#ffb400', intensity: 0.55 },
+    '3000': { color: '#ffde65', intensity: 0.25 },
     '4000': { color: '#ffffff', intensity: 0.50 },
-    '6000': { color: '#90dffe', intensity: 0.50 }
+    '6000': { color: '#b1e3fa', intensity: 0.50 }
   };
 
   const applyColorEffect = (temp) => {
@@ -56,6 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  // --- Gestión de Materiales ---
   const storeOriginalMaterialStates = () => {
     ZONES_CONFIG.forEach(zone => {
       zone.materials.forEach(matName => {
@@ -70,7 +80,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const updatePanelVisibility = (viewName) => {
     ZONES_CONFIG.forEach(zone => {
       const panel = document.getElementById(zone.panelHtmlId);
-      if (panel) panel.style.display = zone.triggerViews.includes(viewName) ? "block" : "none";
+      if (panel) {
+        panel.style.display = zone.triggerViews.includes(viewName) ? "block" : "none";
+      }
     });
   };
 
@@ -79,13 +91,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!panel) return;
 
     panel.querySelectorAll(".temp-btn").forEach(btn => {
-      btn.onclick = () => applyColorEffect(btn.dataset.temp);
+      btn.onclick = () => {
+        const temp = btn.dataset.temp;
+        applyColorEffect(temp); // Aplicar tinte global
+      };
     });
 
     panel.querySelector(".close-panel-btn").onclick = () => panel.style.display = "none";
 
     panel.querySelector(".reset-btn").onclick = () => {
-      overlay.style.opacity = 0;
+      overlay.style.opacity = 0; // Quitar tinte
       zone.materials.forEach(matName => {
         const mat = viewer.findMaterial(matName);
         const orig = originalMaterials[matName];
@@ -96,6 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     };
 
+    // Sliders
     const track = panel.querySelector(".vertical-slider-track");
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
@@ -105,132 +121,38 @@ document.addEventListener("DOMContentLoaded", () => {
       const p = Math.max(0, Math.min(100, percent));
       thumb.style.bottom = `${p}%`;
       progress.style.height = `${p}%`;
-      labelDisplay.innerText = zone.viewLabels[Math.round((p / 100) * (zone.viewLabels.length - 1))];
+      const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
+      labelDisplay.innerText = zone.viewLabels[index];
     };
 
     track.onclick = (e) => {
       const rect = track.getBoundingClientRect();
       const p = ((rect.bottom - e.clientY) / rect.height) * 100;
       updateSliderUI(p);
-      viewer.switchToView(zone.sliderViews[Math.round((p / 100) * (zone.sliderViews.length - 1))]);
+      const idx = Math.round((p / 100) * (zone.sliderViews.length - 1));
+      viewer.switchToView(zone.sliderViews[idx]);
     };
   };
 
-  // --- JOYSTICKS CON SIMULACIÓN DE TECLADO ---
-  class Key {
-    constructor(keyCode) {
-      this.keyCode = keyCode;
-    }
-    down() {
-      document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: this.keyCode, bubbles: true, cancelable: true }));
-    }
-    up() {
-      document.dispatchEvent(new KeyboardEvent('keyup', { keyCode: this.keyCode, bubbles: true, cancelable: true }));
-    }
-  }
-
-  const joystickStates = {
-    left: { active: false, x: 0, y: 0 },
-    right: { active: false, x: 0, y: 0 }
-  };
-
-  const activeKeys = {
-    W: new Key(87), S: new Key(83), A: new Key(65), D: new Key(68),
-    ArrowLeft: new Key(37), ArrowRight: new Key(39)
-  };
-
-  const setupJoystick = (id, stateKey) => {
-    const knob = document.getElementById(`knob-${id}`);
-    const container = document.getElementById(`joystick-${id}`);
-    if (!knob || !container) return;
-
-    const handleStart = (e) => {
-      joystickStates[stateKey].active = true;
-      e.preventDefault();
-    };
-
-    const handleMove = (e) => {
-      if (!joystickStates[stateKey].active) return;
-      const rect = container.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
-      const clientY = (e.touches ? e.touches[0].clientY : e.clientY);
-      let dx = clientX - centerX;
-      let dy = clientY - centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const maxDist = 50;
-      if (dist > maxDist) { dx *= maxDist / dist; dy *= maxDist / dist; }
-      joystickStates[stateKey].x = dx / maxDist;
-      joystickStates[stateKey].y = -dy / maxDist;
-      knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    };
-
-    const handleEnd = () => {
-      joystickStates[stateKey].active = false;
-      joystickStates[stateKey].x = 0;
-      joystickStates[stateKey].y = 0;
-      knob.style.transform = 'translate(0, 0)';
-    };
-
-    knob.addEventListener('mousedown', handleStart);
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleEnd);
-    knob.addEventListener('touchstart', handleStart);
-    window.addEventListener('touchmove', handleMove, { passive: false });
-    window.addEventListener('touchend', handleEnd);
-  };
-
-  // Head Bob
-  let headBobTime = 0;
-  const headBobSpeed = 7;
-  const headBobAmount = 0.015;
-
-  const joystickUpdateLoop = () => {
-    let isMoving = false;
-    const threshold = 0.1;
-
-    if (joystickStates.left.active) {
-      if (joystickStates.left.y > threshold) {
-        activeKeys.W.down(); activeKeys.S.up(); isMoving = true;
-      } else if (joystickStates.left.y < -threshold) {
-        activeKeys.S.down(); activeKeys.W.up(); isMoving = true;
-      } else {
-        activeKeys.W.up(); activeKeys.S.up();
+  // --- Inicialización ---
+  const WALK = window.WALK || {};
+  const init = () => {
+    try {
+      viewer = WALK.getViewer();
+      if (!viewer) {
+        setTimeout(init, 100);
+        return;
       }
-
-      if (joystickStates.left.x < -threshold) {
-        activeKeys.A.down(); activeKeys.D.up(); isMoving = true;
-      } else if (joystickStates.left.x > threshold) {
-        activeKeys.D.down(); activeKeys.A.up(); isMoving = true;
-      } else {
-        activeKeys.A.up(); activeKeys.D.up();
-      }
-    } else {
-      activeKeys.W.up(); activeKeys.S.up(); activeKeys.A.up(); activeKeys.D.up();
+      viewer.setAllMaterialsEditable();
+      viewer.onSceneReadyToDisplay(() => {
+        storeOriginalMaterialStates();
+        ZONES_CONFIG.forEach(initializePanelComponents);
+      });
+      viewer.onViewSwitchDone(updatePanelVisibility);
+    } catch (e) {
+      console.error("Error en script Shapespark:", e);
     }
+  };
 
-    if (joystickStates.right.active) {
-      if (joystickStates.right.x < -threshold) {
-        activeKeys.ArrowLeft.down(); activeKeys.ArrowRight.up();
-      } else if (joystickStates.right.x > threshold) {
-        activeKeys.ArrowRight.down(); activeKeys.ArrowLeft.up();
-      } else {
-        activeKeys.ArrowLeft.up(); activeKeys.ArrowRight.up();
-      }
-    } else {
-      activeKeys.ArrowLeft.up(); activeKeys.ArrowRight.up();
-    }
-
-    if (viewer && isMoving) {
-      headBobTime += 0.016;
-      const bobOffset = Math.sin(headBobTime * headBobSpeed) * headBobAmount;
-      const currentPos = viewer.getCameraPosition();
-      const newView = new WALK.View();
-      newView.position.x = currentPos.x;
-      newView.position.y = currentPos.y + bobOffset;
-      newView.position.z = currentPos.z;
-      const currentRot = viewer.getCameraRotation();
-      newView.rotation.yaw = currentRot.yaw;
-      newView.rotation.pitch = currentRot.pitch;
-   
+  init();
+});
