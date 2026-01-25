@@ -42,10 +42,10 @@ document.addEventListener("DOMContentLoaded", () => {
   document.body.appendChild(overlay);
 
   const TEMP_CONFIG = {
-    '2700': { color: '#fea32c', intensity: 0.30 },
+    '2700': { color: '#fea32c', intensity: 0.40 },
     '3000': { color: '#ffde65', intensity: 0.20 },
     '4000': { color: '#ffffff', intensity: 0.50 },
-    '6000': { color: '#90dffe', intensity: 0.70 }
+    '6000': { color: '#90dffe', intensity: 0.50 }
   };
 
   const applyColorEffect = (temp) => {
@@ -171,8 +171,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (needsUpdate) {
       // API CORREGIDA: Usar WALK.View y switchToView
       const newView = new WALK.View();
-      newView.position.copy(camPos);
-      newView.rotation.copy(camRot);
+      newView.position.x = camPos.x;
+      newView.position.y = camPos.y;
+      newView.position.z = camPos.z;
+      newView.rotation.yaw = camRot.yaw;
+      newView.rotation.pitch = camRot.pitch;
+      newView.rotation.roll = camRot.roll;
       viewer.switchToView(newView, 0); // 0 = transición instantánea
       viewer.requestFrame();
     }
