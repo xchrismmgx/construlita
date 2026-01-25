@@ -109,7 +109,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- SISTEMA DE JOYSTICKS REFACTORIZADO ---
 
-  // Clase auxiliar para simular eventos de teclado (enfoque del código referenciado)
   class VirtualKey {
     constructor(keyCode) {
       this.keyCode = keyCode;
@@ -131,16 +130,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Teclas virtuales para movimiento (W, A, S, D) y rotación (flechas)
   const keys = {
-    forward: new VirtualKey(87),   // W
-    backward: new VirtualKey(83),  // S
-    left: new VirtualKey(65),      // A
-    right: new VirtualKey(68),     // D
-    lookLeft: new VirtualKey(37),  // Flecha Izquierda
-    lookRight: new VirtualKey(39), // Flecha Derecha
-    lookUp: new VirtualKey(38),    // Flecha Arriba
-    lookDown: new VirtualKey(40)   // Flecha Abajo
+    forward: new VirtualKey(87), backward: new VirtualKey(83),
+    left: new VirtualKey(65), right: new VirtualKey(68),
+    lookLeft: new VirtualKey(37), lookRight: new VirtualKey(39),
+    lookUp: new VirtualKey(38), lookDown: new VirtualKey(40)
   };
 
   const joystickStates = {
@@ -152,12 +146,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const knob = document.getElementById(`knob-${id}`);
     const container = document.getElementById(`joystick-${id}`);
     if (!knob || !container) return;
-
-    const handleStart = (e) => {
-      joystickStates[stateKey].active = true;
-      e.preventDefault();
-    };
-
+    const handleStart = (e) => { joystickStates[stateKey].active = true; e.preventDefault(); };
     const handleMove = (e) => {
       if (!joystickStates[stateKey].active) return;
       const rect = container.getBoundingClientRect();
@@ -165,142 +154,61 @@ document.addEventListener("DOMContentLoaded", () => {
       const centerY = rect.top + rect.height / 2;
       const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
       const clientY = (e.touches ? e.touches[0].clientY : e.clientY);
-
-      let dx = clientX - centerX;
-      let dy = clientY - centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const maxDist = 50;
-
-      if (dist > maxDist) {
-        dx *= maxDist / dist;
-        dy *= maxDist / dist;
-      }
-
+      let dx = clientX - centerX; let dy = clientY - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy); const maxDist = 50;
+      if (dist > maxDist) { dx *= maxDist / dist; dy *= maxDist / dist; }
       joystickStates[stateKey].x = dx / maxDist;
-      joystickStates[stateKey].y = dy / maxDist; // Sin inversión
+      joystickStates[stateKey].y = dy / maxDist;
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
     };
-
     const handleEnd = () => {
-      joystickStates[stateKey].active = false;
-      joystickStates[stateKey].x = 0;
-      joystickStates[stateKey].y = 0;
+      joystickStates[stateKey].active = false; joystickStates[stateKey].x = 0; joystickStates[stateKey].y = 0;
       knob.style.transform = 'translate(0, 0)';
-
-      // Liberar todas las teclas cuando se suelta el joystick
       if (stateKey === 'left') {
         keys.forward.up(); keys.backward.up(); keys.left.up(); keys.right.up();
       } else {
         keys.lookLeft.up(); keys.lookRight.up(); keys.lookUp.up(); keys.lookDown.up();
       }
     };
-
-    knob.addEventListener('mousedown', handleStart);
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleEnd);
-    knob.addEventListener('touchstart', handleStart);
-    window.addEventListener('touchmove', handleMove, { passive: false });
-    window.addEventListener('touchend', handleEnd);
+    knob.addEventListener('mousedown', handleStart); window.addEventListener('mousemove', handleMove); window.addEventListener('mouseup', handleEnd);
+    knob.addEventListener('touchstart', handleStart); window.addEventListener('touchmove', handleMove, { passive: false }); window.addEventListener('touchend', handleEnd);
   };
 
-  // Loop de actualización basado en estados del joystick
-  const deadzone = 0.1; // Zona muerta para evitar drift
-
+  const deadzone = 0.1;
   const joystickUpdateLoop = () => {
-    // Joystick Izquierdo: Movimiento (WASD)
     if (joystickStates.left.active) {
-      const x = joystickStates.left.x;
-      const y = joystickStates.left.y;
-
-      // Adelante/Atrás (Eje Y)
-      if (y < -deadzone) {
-        keys.forward.down();
-        keys.backward.up();
-      } else if (y > deadzone) {
-        keys.backward.down();
-        keys.forward.up();
-      } else {
-        keys.forward.up();
-        keys.backward.up();
-      }
-
-      // Izquierda/Derecha (Eje X)
-      if (x < -deadzone) {
-        keys.left.down();
-        keys.right.up();
-      } else if (x > deadzone) {
-        keys.right.down();
-        keys.left.up();
-      } else {
-        keys.left.up();
-        keys.right.up();
-      }
+      const x = joystickStates.left.x; const y = joystickStates.left.y;
+      if (y < -deadzone) { keys.forward.down(); keys.backward.up(); }
+      else if (y > deadzone) { keys.backward.down(); keys.forward.up(); }
+      else { keys.forward.up(); keys.backward.up(); }
+      if (x < -deadzone) { keys.left.down(); keys.right.up(); }
+      else if (x > deadzone) { keys.right.down(); keys.left.up(); }
+      else { keys.left.up(); keys.right.up(); }
     } else {
       keys.forward.up(); keys.backward.up(); keys.left.up(); keys.right.up();
     }
-
-    // Joystick Derecho: Mirar (Flechas)
     if (joystickStates.right.active) {
-      const x = joystickStates.right.x;
-      const y = joystickStates.right.y;
-
-      // Arriba/Abajo (Eje Y)
-      if (y < -deadzone) {
-        keys.lookUp.down();
-        keys.lookDown.up();
-      } else if (y > deadzone) {
-        keys.lookDown.down();
-        keys.lookUp.up();
-      } else {
-        keys.lookUp.up();
-        keys.lookDown.up();
-      }
-
-      // Izquierda/Derecha (Eje X)
-      if (x < -deadzone) {
-        keys.lookLeft.down();
-        keys.lookRight.up();
-      } else if (x > deadzone) {
-        keys.lookRight.down();
-        keys.lookLeft.up();
-      } else {
-        keys.lookLeft.up();
-        keys.lookRight.up();
-      }
+      const x = joystickStates.right.x; const y = joystickStates.right.y;
+      if (y < -deadzone) { keys.lookUp.down(); keys.lookDown.up(); }
+      else if (y > deadzone) { keys.lookDown.down(); keys.lookUp.up(); }
+      else { keys.lookUp.up(); keys.lookDown.up(); }
+      if (x < -deadzone) { keys.lookLeft.down(); keys.lookRight.up(); }
+      else if (x > deadzone) { keys.lookRight.down(); keys.lookLeft.up(); }
+      else { keys.lookLeft.up(); keys.lookRight.up(); }
     } else {
       keys.lookLeft.up(); keys.lookRight.up(); keys.lookUp.up(); keys.lookDown.up();
     }
-
     requestAnimationFrame(joystickUpdateLoop);
   };
 
-  // --- Inicialización ---
   const WALK = window.WALK || {};
   const init = () => {
     try {
       viewer = WALK.getViewer();
       if (!viewer) { setTimeout(init, 100); return; }
-
       viewer.setAllMaterialsEditable();
-
-      // Ajustar velocidades de movimiento de cámara (similar al código referenciado)
       WALK.CAMERA_FULL_ACCELERATION_TIME = 0.75;
-      WALK.CAMERA_ARROWS_TURN_SPEED = 0.2618; // ~15 grados (más lento, 50% del original)
-
-      setupJoystick('left', 'left');
-      setupJoystick('right', 'right');
+      WALK.CAMERA_ARROWS_TURN_SPEED = 0.2618;
+      setupJoystick('left', 'left'); setupJoystick('right', 'right');
       joystickUpdateLoop();
-
-      viewer.onSceneReadyToDisplay(() => {
-        storeOriginalMaterialStates();
-        ZONES_CONFIG.forEach(initializePanelComponents);
-      });
-
-      viewer.onViewSwitchDone(updatePanelVisibility);
-    } catch (e) {
-      console.error("Error en script:", e);
-    }
-  };
-
-  init();
-});
+   
