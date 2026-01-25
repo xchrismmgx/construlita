@@ -45,7 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
     '2700': { color: '#fea32c', intensity: 0.30 },
     '3000': { color: '#ffde65', intensity: 0.20 },
     '4000': { color: '#ffffff', intensity: 0.50 },
-    '6000': { color: '#f5faff', intensity: 0.80 }
+    '6000': { color: '#90dffe', intensity: 0.70 }
   };
 
   const applyColorEffect = (temp) => {
@@ -138,28 +138,44 @@ document.addEventListener("DOMContentLoaded", () => {
     knob.addEventListener('touchstart', handleStart); window.addEventListener('touchmove', handleMove, { passive: false }); window.addEventListener('touchend', handleEnd);
   };
 
-  const moveSpeed = 0.08;
-  const rotateSpeed = 0.03;
+  const moveSpeed = 0.10;
+  const rotateSpeed = 0.035;
+
   const cameraUpdateLoop = () => {
     if (!viewer) { requestAnimationFrame(cameraUpdateLoop); return; }
+
     let needsUpdate = false;
     const camPos = viewer.getCameraPosition();
     const camRot = viewer.getCameraRotation();
+
+    // Joystick Izquierdo: Movimiento (4 vías)
     if (joystickStates.left.active) {
       const yaw = camRot.yaw;
-      const f = joystickStates.left.y;
-      const s = joystickStates.left.x;
+      const f = joystickStates.left.y; // Adelante/Atrás
+      const s = joystickStates.left.x; // Izquierda/Derecha
+
+      // Vector de movimiento rotado según Yaw
       camPos.x += (Math.sin(yaw) * f + Math.cos(yaw) * s) * moveSpeed;
       camPos.z += (Math.cos(yaw) * f - Math.sin(yaw) * s) * moveSpeed;
       needsUpdate = true;
     }
+
+    // Joystick Derecho: Mirar
     if (joystickStates.right.active) {
       camRot.yaw -= joystickStates.right.x * rotateSpeed;
       camRot.pitch += joystickStates.right.y * rotateSpeed;
       camRot.pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, camRot.pitch));
       needsUpdate = true;
     }
-    if (needsUpdate) { viewer.setCameraPosition(camPos); viewer.setCameraRotation(camRot); viewer.requestFrame(); }
+
+    if (needsUpdate) {
+      // API CORREGIDA: Usar WALK.View y switchToView
+      const newView = new WALK.View();
+      newView.position.copy(camPos);
+      newView.rotation.copy(camRot);
+      viewer.switchToView(newView, 0); // 0 = transición instantánea
+      viewer.requestFrame();
+    }
     requestAnimationFrame(cameraUpdateLoop);
   };
 
