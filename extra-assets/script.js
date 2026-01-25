@@ -1,10 +1,11 @@
 /**
- * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS + JOYSTICKS
- * Este script gestiona materiales, aplica un filtro de color global y navegación por joystick 4-vías.
+ * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS + JOYSTICKS (Keyboard Simulation)
+ * Este script gestiona materiales, aplica filtros de color y navegación por joystick mediante simulación de teclado.
  */
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
   const GLOBAL_COLOR_INTENSITY = 0.5;
+  const wCanvas = document.getElementById('walk-canvas');
 
   const ZONES_CONFIG = [
     {
@@ -42,7 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.body.appendChild(overlay);
 
   const TEMP_CONFIG = {
-    '2700': { color: '#fea32c', intensity: 0.40 },
+    '2700': { color: '#fea32c', intensity: 0.55 },
     '3000': { color: '#ffde65', intensity: 0.20 },
     '4000': { color: '#ffffff', intensity: 0.50 },
     '6000': { color: '#90dffe', intensity: 0.50 }
@@ -106,16 +107,47 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   };
 
+  // --- SISTEMA DE JOYSTICKS CON SIMULACIÓN DE TECLADO ---
+  class Key {
+    constructor(keyCode) {
+      this.keyCode = keyCode;
+    }
+    down() {
+      if (wCanvas) {
+        wCanvas.dispatchEvent(new KeyboardEvent('keydown', { keyCode: this.keyCode, bubbles: true, cancelable: true }));
+      }
+    }
+    up() {
+      if (wCanvas) {
+        wCanvas.dispatchEvent(new KeyboardEvent('keyup', { keyCode: this.keyCode, bubbles: true, cancelable: true }));
+      }
+    }
+  }
+
   const joystickStates = {
     left: { active: false, x: 0, y: 0 },
     right: { active: false, x: 0, y: 0 }
+  };
+
+  const activeKeys = {
+    W: new Key(87), // Adelante
+    S: new Key(83), // Atrás
+    A: new Key(65), // Izquierda
+    D: new Key(68), // Derecha
+    ArrowLeft: new Key(37),  // Girar izquierda
+    ArrowRight: new Key(39)  // Girar derecha
   };
 
   const setupJoystick = (id, stateKey) => {
     const knob = document.getElementById(`knob-${id}`);
     const container = document.getElementById(`joystick-${id}`);
     if (!knob || !container) return;
-    const handleStart = (e) => { joystickStates[stateKey].active = true; e.preventDefault(); };
+
+    const handleStart = (e) => {
+      joystickStates[stateKey].active = true;
+      e.preventDefault();
+    };
+
     const handleMove = (e) => {
       if (!joystickStates[stateKey].active) return;
       const rect = container.getBoundingClientRect();
@@ -123,64 +155,83 @@ document.addEventListener("DOMContentLoaded", () => {
       const centerY = rect.top + rect.height / 2;
       const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
       const clientY = (e.touches ? e.touches[0].clientY : e.clientY);
-      let dx = clientX - centerX; let dy = clientY - centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy); const maxDist = 50;
+      let dx = clientX - centerX;
+      let dy = clientY - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const maxDist = 50;
       if (dist > maxDist) { dx *= maxDist / dist; dy *= maxDist / dist; }
       joystickStates[stateKey].x = dx / maxDist;
       joystickStates[stateKey].y = -dy / maxDist;
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
     };
+
     const handleEnd = () => {
-      joystickStates[stateKey].active = false; joystickStates[stateKey].x = 0; joystickStates[stateKey].y = 0;
+      joystickStates[stateKey].active = false;
+      joystickStates[stateKey].x = 0;
+      joystickStates[stateKey].y = 0;
       knob.style.transform = 'translate(0, 0)';
     };
-    knob.addEventListener('mousedown', handleStart); window.addEventListener('mousemove', handleMove); window.addEventListener('mouseup', handleEnd);
-    knob.addEventListener('touchstart', handleStart); window.addEventListener('touchmove', handleMove, { passive: false }); window.addEventListener('touchend', handleEnd);
+
+    knob.addEventListener('mousedown', handleStart);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    knob.addEventListener('touchstart', handleStart);
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
   };
 
-  const moveSpeed = 0.05;
-  const rotateSpeed = 0.0175;
-
-  const cameraUpdateLoop = () => {
-    if (!viewer) { requestAnimationFrame(cameraUpdateLoop); return; }
-
-    let needsUpdate = false;
-    const camPos = viewer.getCameraPosition();
-    const camRot = viewer.getCameraRotation();
-
-    // Joystick Izquierdo: Movimiento (4 vías)
+  const joystickUpdateLoop = () => {
+    // Joystick Izquierdo: WASD (Movimiento)
     if (joystickStates.left.active) {
-      const yaw = camRot.yaw;
-      const f = -joystickStates.left.y; // Adelante/Atrás (invertido)
-      const s = joystickStates.left.x; // Izquierda/Derecha
-
-      // Vector de movimiento rotado según Yaw
-      camPos.x += (Math.sin(yaw) * f + Math.cos(yaw) * s) * moveSpeed;
-      camPos.z += (Math.cos(yaw) * f - Math.sin(yaw) * s) * moveSpeed;
-      needsUpdate = true;
+      const threshold = 0.1;
+      // Adelante/Atrás
+      if (joystickStates.left.y > threshold) {
+        activeKeys.W.down();
+        activeKeys.S.up();
+      } else if (joystickStates.left.y < -threshold) {
+        activeKeys.S.down();
+        activeKeys.W.up();
+      } else {
+        activeKeys.W.up();
+        activeKeys.S.up();
+      }
+      // Izquierda/Derecha
+      if (joystickStates.left.x < -threshold) {
+        activeKeys.A.down();
+        activeKeys.D.up();
+      } else if (joystickStates.left.x > threshold) {
+        activeKeys.D.down();
+        activeKeys.A.up();
+      } else {
+        activeKeys.A.up();
+        activeKeys.D.up();
+      }
+    } else {
+      activeKeys.W.up();
+      activeKeys.S.up();
+      activeKeys.A.up();
+      activeKeys.D.up();
     }
 
-    // Joystick Derecho: Mirar
+    // Joystick Derecho: Flechas (Rotación)
     if (joystickStates.right.active) {
-      camRot.yaw -= joystickStates.right.x * rotateSpeed;
-      camRot.pitch += joystickStates.right.y * rotateSpeed;
-      camRot.pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, camRot.pitch));
-      needsUpdate = true;
+      const threshold = 0.1;
+      if (joystickStates.right.x < -threshold) {
+        activeKeys.ArrowLeft.down();
+        activeKeys.ArrowRight.up();
+      } else if (joystickStates.right.x > threshold) {
+        activeKeys.ArrowRight.down();
+        activeKeys.ArrowLeft.up();
+      } else {
+        activeKeys.ArrowLeft.up();
+        activeKeys.ArrowRight.up();
+      }
+    } else {
+      activeKeys.ArrowLeft.up();
+      activeKeys.ArrowRight.up();
     }
 
-    if (needsUpdate) {
-      // API CORREGIDA: Usar WALK.View y switchToView
-      const newView = new WALK.View();
-      newView.position.x = camPos.x;
-      newView.position.y = camPos.y;
-      newView.position.z = camPos.z;
-      newView.rotation.yaw = camRot.yaw;
-      newView.rotation.pitch = camRot.pitch;
-      newView.rotation.roll = camRot.roll;
-      viewer.switchToView(newView, 0); // 0 = transición instantánea
-      viewer.requestFrame();
-    }
-    requestAnimationFrame(cameraUpdateLoop);
+    requestAnimationFrame(joystickUpdateLoop);
   };
 
   const WALK = window.WALK || {};
@@ -189,8 +240,9 @@ document.addEventListener("DOMContentLoaded", () => {
       viewer = WALK.getViewer();
       if (!viewer) { setTimeout(init, 100); return; }
       viewer.setAllMaterialsEditable();
-      setupJoystick('left', 'left'); setupJoystick('right', 'right');
-      cameraUpdateLoop();
+      setupJoystick('left', 'left');
+      setupJoystick('right', 'right');
+      joystickUpdateLoop();
       viewer.onSceneReadyToDisplay(() => {
         storeOriginalMaterialStates();
         ZONES_CONFIG.forEach(initializePanelComponents);
