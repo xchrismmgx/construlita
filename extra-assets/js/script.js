@@ -205,10 +205,10 @@ document.addEventListener("DOMContentLoaded", () => {
       document.body.appendChild(overlay);
 
       const TEMP_COLORS = {
-        '2700': { color: '#ff5400', intensity: 0.10 },
+        '2700': { color: '#e62e00', intensity: 0.30 },
         '3000': { color: '#ffde65', intensity: 0.20 },
         '4000': { color: '#ffffff', intensity: 0.50 },
-        '6000': { color: '#d4ebff', intensity: 0.95 }
+        '6000': { color: '#f5faff', intensity: 0.80 }
       };
 
       const applyOverlay = (temp) => {
