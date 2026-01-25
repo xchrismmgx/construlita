@@ -188,24 +188,51 @@ document.addEventListener("DOMContentLoaded", () => {
         updatePanelVisibility(viewName);
       });
 
-      // --- Manejo de mensajes del Padre (LUT System) ---
-      window.addEventListener('message', async (event) => {
-        if (event.data.type === 'UPDATE_LUT' && viewer) {
-          try {
-            const dataUrl = event.data.dataUrl;
-            const img = new Image();
-            img.onload = () => {
-              const texture = viewer.createTextureFromHTMLImage(img, true);
-              viewer.setPostProcessingConfig({ colorMap: texture });
-              viewer.requestFrame();
-            };
-            img.src = dataUrl;
-          } catch (err) {
-            console.error("Error aplicando el LUT:", err);
-          }
+      // --- Sistema de Overlay para Temperatura (Alternativa a LUT) ---
+      const overlay = document.createElement('div');
+      overlay.id = 'temp-overlay';
+      Object.assign(overlay.style, {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 9999,
+        mixBlendMode: 'color', // 'color' o 'soft-light' para un efecto natural
+        transition: 'background-color 0.5s ease, opacity 0.5s ease',
+        opacity: 0
+      });
+      document.body.appendChild(overlay);
+
+      const TEMP_COLORS = {
+        '2700': { color: '#ff8a00', intensity: 0.10 },
+        '3000': { color: '#ffb400', intensity: 0.20 },
+        '4000': { color: '#ffffff', intensity: 0.50 },
+        '6000': { color: '#0070ff', intensity: 0.95 }
+      };
+
+      const applyOverlay = (temp) => {
+        const config = TEMP_COLORS[temp];
+        if (config) {
+          overlay.style.backgroundColor = config.color;
+          overlay.style.opacity = config.intensity;
+        }
+      };
+
+      // --- Manejo de mensajes del Padre (Webflow) ---
+      window.addEventListener('message', (event) => {
+        if (event.data.type === 'TEMP_CLICKED') {
+          applyOverlay(event.data.temp);
+        } else if (event.data.type === 'RESET_TEMP') {
+          overlay.style.opacity = 0;
         }
       });
 
     } catch (e) {
       console.error("Error inicializando API Shapespark:", e);
-   
+    }
+  };
+
+  init();
+});
