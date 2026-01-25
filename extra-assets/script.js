@@ -4,10 +4,8 @@
  */
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
-
   // Factor de intensidad para el cálculo de Kelvin a RGB
   const GLOBAL_COLOR_INTENSITY = 0.5;
-
   // Configuración de Zonas (Misma lógica anterior para no romper funcionalidad)
   const ZONES_CONFIG = [
     {
@@ -32,14 +30,11 @@ document.addEventListener("DOMContentLoaded", () => {
       viewLabels: ["10%", "40%", "80%"]
     }
   ];
-
   const originalMaterials = {};
-
   // --- Utilidades de Color ---
   const kelvinToRGB = (kelvin) => {
     let temp = kelvin / 100;
     let r, g, b;
-
     if (temp <= 66) {
       r = 255;
       g = temp;
@@ -57,11 +52,9 @@ document.addEventListener("DOMContentLoaded", () => {
       g = 288.1221695283 * Math.pow(g, -0.0755148492);
       b = 255;
     }
-
     const clamp = (v) => Math.min(255, Math.max(0, v)) / 255;
     return { r: clamp(r), g: clamp(g), b: clamp(b) };
   };
-
   // --- Gestión de Materiales ---
   const storeOriginalMaterialStates = () => {
     ZONES_CONFIG.forEach(zone => {
@@ -76,7 +69,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
   };
-
   const applyTemperatureToZone = (zone, kelvin) => {
     const rgb = kelvinToRGB(kelvin);
     zone.materials.forEach(matName => {
@@ -91,7 +83,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   };
-
   // --- UI & Eventos ---
   const updatePanelVisibility = (viewName) => {
     ZONES_CONFIG.forEach(zone => {
@@ -103,11 +94,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   };
-
   const initializePanelComponents = (zone) => {
     const panel = document.getElementById(zone.panelHtmlId);
     if (!panel) return;
-
     // Botones de Temperatura
     panel.querySelectorAll(".temp-btn").forEach(btn => {
       btn.onclick = () => {
@@ -121,12 +110,10 @@ document.addEventListener("DOMContentLoaded", () => {
         applyTemperatureToZone(zone, parseInt(temp));
       };
     });
-
     // Botón Cerrar
     panel.querySelector(".close-panel-btn").onclick = () => {
       panel.style.display = "none";
     };
-
     // Botón Reset
     panel.querySelector(".reset-btn").onclick = () => {
       if (window.parent !== window) {
@@ -141,22 +128,18 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
     };
-
     // Lógica de Sliders (Cámaras/Vistas)
     const track = panel.querySelector(".vertical-slider-track");
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
     const labelDisplay = panel.querySelector(".current-view-percentage");
-
     const updateSliderUI = (percent) => {
       const p = Math.max(0, Math.min(100, percent));
       thumb.style.bottom = `${p}%`;
       progress.style.height = `${p}%`;
-
       const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
       labelDisplay.innerText = zone.viewLabels[index];
     };
-
     track.onclick = (e) => {
       const rect = track.getBoundingClientRect();
       const p = ((rect.bottom - e.clientY) / rect.height) * 100;
@@ -165,10 +148,8 @@ document.addEventListener("DOMContentLoaded", () => {
       viewer.switchToView(zone.sliderViews[viewIndex]);
     };
   };
-
   // --- Inicialización Principal ---
   const WALK = window.WALK || {};
-
   const init = () => {
     try {
       viewer = WALK.getViewer();
@@ -176,18 +157,14 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(init, 100);
         return;
       }
-
       viewer.setAllMaterialsEditable();
-
       viewer.onSceneReadyToDisplay(() => {
         storeOriginalMaterialStates();
         ZONES_CONFIG.forEach(zone => initializePanelComponents(zone));
       });
-
       viewer.onViewSwitchDone((viewName) => {
         updatePanelVisibility(viewName);
       });
-
       // --- Sistema de Overlay para Temperatura (Alternativa a LUT) ---
       const overlay = document.createElement('div');
       overlay.id = 'temp-overlay';
@@ -204,14 +181,12 @@ document.addEventListener("DOMContentLoaded", () => {
         opacity: 0
       });
       document.body.appendChild(overlay);
-
       const TEMP_COLORS = {
         '2700': { color: '#ff8a00', intensity: 0.10 },
         '3000': { color: '#ffb400', intensity: 0.20 },
         '4000': { color: '#ffffff', intensity: 0.50 },
         '6000': { color: '#0070ff', intensity: 0.95 }
       };
-
       const applyOverlay = (temp) => {
         const config = TEMP_COLORS[temp];
         if (config) {
@@ -219,7 +194,6 @@ document.addEventListener("DOMContentLoaded", () => {
           overlay.style.opacity = config.intensity;
         }
       };
-
       // --- Manejo de mensajes del Padre (Webflow) ---
       window.addEventListener('message', (event) => {
         if (event.data.type === 'TEMP_CLICKED') {
@@ -228,11 +202,9 @@ document.addEventListener("DOMContentLoaded", () => {
           overlay.style.opacity = 0;
         }
       });
-
     } catch (e) {
       console.error("Error inicializando API Shapespark:", e);
     }
   };
-
   init();
 });
