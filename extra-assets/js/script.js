@@ -5,7 +5,6 @@
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
   const GLOBAL_COLOR_INTENSITY = 0.5;
-  const wCanvas = document.getElementById('walk-canvas');
 
   const ZONES_CONFIG = [
     {
@@ -113,14 +112,10 @@ document.addEventListener("DOMContentLoaded", () => {
       this.keyCode = keyCode;
     }
     down() {
-      if (wCanvas) {
-        wCanvas.dispatchEvent(new KeyboardEvent('keydown', { keyCode: this.keyCode, bubbles: true, cancelable: true }));
-      }
+      document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: this.keyCode, bubbles: true, cancelable: true }));
     }
     up() {
-      if (wCanvas) {
-        wCanvas.dispatchEvent(new KeyboardEvent('keyup', { keyCode: this.keyCode, bubbles: true, cancelable: true }));
-      }
+      document.dispatchEvent(new KeyboardEvent('keyup', { keyCode: this.keyCode, bubbles: true, cancelable: true }));
     }
   }
 
@@ -180,7 +175,14 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener('touchend', handleEnd);
   };
 
+  // Variables para el efecto de balanceo (Head Bob)
+  let headBobTime = 0;
+  const headBobSpeed = 7; // Velocidad del balanceo
+  const headBobAmount = 0.015; // Amplitud del balanceo (muy sutil)
+
   const joystickUpdateLoop = () => {
+    let isMoving = false;
+
     // Joystick Izquierdo: WASD (Movimiento)
     if (joystickStates.left.active) {
       const threshold = 0.1;
@@ -188,9 +190,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (joystickStates.left.y > threshold) {
         activeKeys.W.down();
         activeKeys.S.up();
+        isMoving = true;
       } else if (joystickStates.left.y < -threshold) {
         activeKeys.S.down();
         activeKeys.W.up();
+        isMoving = true;
       } else {
         activeKeys.W.up();
         activeKeys.S.up();
@@ -199,9 +203,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (joystickStates.left.x < -threshold) {
         activeKeys.A.down();
         activeKeys.D.up();
+        isMoving = true;
       } else if (joystickStates.left.x > threshold) {
         activeKeys.D.down();
         activeKeys.A.up();
+        isMoving = true;
       } else {
         activeKeys.A.up();
         activeKeys.D.up();
@@ -231,24 +237,18 @@ document.addEventListener("DOMContentLoaded", () => {
       activeKeys.ArrowRight.up();
     }
 
-    requestAnimationFrame(joystickUpdateLoop);
-  };
+    // Efecto de balanceo al caminar (Head Bob)
+    if (viewer && isMoving) {
+      headBobTime += 0.016; // ~60fps
+      const bobOffset = Math.sin(headBobTime * headBobSpeed) * headBobAmount;
 
-  const WALK = window.WALK || {};
-  const init = () => {
-    try {
-      viewer = WALK.getViewer();
-      if (!viewer) { setTimeout(init, 100); return; }
-      viewer.setAllMaterialsEditable();
-      setupJoystick('left', 'left');
-      setupJoystick('right', 'right');
-      joystickUpdateLoop();
-      viewer.onSceneReadyToDisplay(() => {
-        storeOriginalMaterialStates();
-        ZONES_CONFIG.forEach(initializePanelComponents);
-      });
-      viewer.onViewSwitchDone(updatePanelVisibility);
-    } catch (e) { console.error("Error en script:", e); }
-  };
-  init();
-});
+      const currentPos = viewer.getCameraPosition();
+      const newView = new WALK.View();
+      newView.position.x = currentPos.x;
+      newView.position.y = currentPos.y + bobOffset;
+      newView.position.z = currentPos.z;
+
+      const currentRot = viewer.getCameraRotation();
+      newView.rotation.yaw = currentRot.yaw;
+      newView.rotation.pitch = currentRot.pitch;
+   
