@@ -233,4 +233,22 @@ document.addEventListener("DOMContentLoaded", () => {
       const currentRot = viewer.getCameraRotation();
       newView.rotation.yaw = currentRot.yaw;
       newView.rotation.pitch = currentRot.pitch;
+      newView.rotation.roll = currentRot.roll;
+      viewer.switchToView(newView, 0);
+    } else {
+      headBobTime = 0;
+    }
+
+    requestAnimationFrame(joystickUpdateLoop);
+  };
+
+  const WALK = window.WALK || {};
+  const init = () => {
+    try {
+      viewer = WALK.getViewer();
+      if (!viewer) { setTimeout(init, 100); return; }
+      viewer.setAllMaterialsEditable();
+      setupJoystick('left', 'left');
+      setupJoystick('right', 'right');
+      joystickUpdateLoop();
    
