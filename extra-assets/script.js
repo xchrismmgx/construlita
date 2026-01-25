@@ -1,6 +1,6 @@
 /**
- * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS
- * Este script gestiona materiales y aplica un filtro de color global.
+ * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS + JOYSTICKS
+ * Este script gestiona materiales, aplica un filtro de color global y navegación por joystick.
  */
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
@@ -51,10 +51,10 @@ document.addEventListener("DOMContentLoaded", () => {
   document.body.appendChild(overlay);
 
   const TEMP_CONFIG = {
-    '2700': { color: '#ff5400', intensity: 0.10 },
+    '2700': { color: '#e62e00', intensity: 0.30 },
     '3000': { color: '#ffde65', intensity: 0.20 },
     '4000': { color: '#ffffff', intensity: 0.50 },
-    '6000': { color: '#d4ebff', intensity: 0.95 }
+    '6000': { color: '#f5faff', intensity: 0.80 }
   };
 
   const applyColorEffect = (temp) => {
@@ -93,14 +93,14 @@ document.addEventListener("DOMContentLoaded", () => {
     panel.querySelectorAll(".temp-btn").forEach(btn => {
       btn.onclick = () => {
         const temp = btn.dataset.temp;
-        applyColorEffect(temp); // Aplicar tinte global
+        applyColorEffect(temp);
       };
     });
 
     panel.querySelector(".close-panel-btn").onclick = () => panel.style.display = "none";
 
     panel.querySelector(".reset-btn").onclick = () => {
-      overlay.style.opacity = 0; // Quitar tinte
+      overlay.style.opacity = 0;
       zone.materials.forEach(matName => {
         const mat = viewer.findMaterial(matName);
         const orig = originalMaterials[matName];
@@ -134,6 +134,97 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   };
 
+  // --- SISTEMA DE JOYSTICKS D-PAD ---
+  const joystickStates = {
+    left: { active: false, x: 0, y: 0 },
+    right: { active: false, x: 0, y: 0 }
+  };
+
+  const setupJoystick = (id, stateKey) => {
+    const knob = document.getElementById(`knob-${id}`);
+    const container = document.getElementById(`joystick-${id}`);
+    if (!knob || !container) return;
+
+    const handleStart = (e) => {
+      joystickStates[stateKey].active = true;
+      e.preventDefault();
+    };
+
+    const handleMove = (e) => {
+      if (!joystickStates[stateKey].active) return;
+      const rect = container.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
+      const clientY = (e.touches ? e.touches[0].clientY : e.clientY);
+
+      let dx = clientX - centerX;
+      let dy = clientY - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const maxDist = 50;
+
+      if (dist > maxDist) {
+        dx *= maxDist / dist;
+        dy *= maxDist / dist;
+      }
+
+      joystickStates[stateKey].x = dx / maxDist;
+      joystickStates[stateKey].y = -dy / maxDist;
+
+      knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    };
+
+    const handleEnd = () => {
+      joystickStates[stateKey].active = false;
+      joystickStates[stateKey].x = 0;
+      joystickStates[stateKey].y = 0;
+      knob.style.transform = 'translate(0, 0)';
+    };
+
+    knob.addEventListener('mousedown', handleStart);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+
+    knob.addEventListener('touchstart', handleStart);
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
+  };
+
+  const moveSpeed = 0.08;
+  const rotateSpeed = 0.03;
+
+  const cameraUpdateLoop = () => {
+    if (!viewer) {
+      requestAnimationFrame(cameraUpdateLoop);
+      return;
+    }
+
+    let needsUpdate = false;
+    const camPos = viewer.getCameraPosition();
+    const camRot = viewer.getCameraRotation();
+
+    if (joystickStates.left.active) {
+      const yaw = camRot.yaw;
+      camPos.x += (Math.sin(yaw) * joystickStates.left.y + Math.cos(yaw) * joystickStates.left.x) * moveSpeed;
+      camPos.z += (Math.cos(yaw) * joystickStates.left.y - Math.sin(yaw) * joystickStates.left.x) * moveSpeed;
+      needsUpdate = true;
+    }
+
+    if (joystickStates.right.active) {
+      camRot.yaw -= joystickStates.right.x * rotateSpeed;
+      camRot.pitch += joystickStates.right.y * rotateSpeed;
+      camRot.pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, camRot.pitch));
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      viewer.setCameraPosition(camPos);
+      viewer.setCameraRotation(camRot);
+      viewer.requestFrame();
+    }
+    requestAnimationFrame(cameraUpdateLoop);
+  };
+
   // --- Inicialización ---
   const WALK = window.WALK || {};
   const init = () => {
@@ -144,13 +235,17 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       viewer.setAllMaterialsEditable();
+      setupJoystick('left', 'left');
+      setupJoystick('right', 'right');
+      cameraUpdateLoop();
+
       viewer.onSceneReadyToDisplay(() => {
         storeOriginalMaterialStates();
         ZONES_CONFIG.forEach(initializePanelComponents);
       });
       viewer.onViewSwitchDone(updatePanelVisibility);
     } catch (e) {
-      console.error("Error en script Shapespark:", e);
+      console.error("Error en script:", e);
     }
   };
 
