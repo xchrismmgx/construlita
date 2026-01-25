@@ -205,10 +205,33 @@ document.addEventListener("DOMContentLoaded", () => {
       document.body.appendChild(overlay);
 
       const TEMP_COLORS = {
-        '2700': { color: '#ffb400', intensity: 0.10 },
+        '2700': { color: '#ff5400', intensity: 0.10 },
         '3000': { color: '#ffde65', intensity: 0.20 },
         '4000': { color: '#ffffff', intensity: 0.50 },
-        '6000': { color: '#b1e3fa', intensity: 0.95 }
+        '6000': { color: '#d4ebff', intensity: 0.95 }
       };
 
-   
+      const applyOverlay = (temp) => {
+        const config = TEMP_COLORS[temp];
+        if (config) {
+          overlay.style.backgroundColor = config.color;
+          overlay.style.opacity = config.intensity;
+        }
+      };
+
+      // --- Manejo de mensajes del Padre (Webflow) ---
+      window.addEventListener('message', (event) => {
+        if (event.data.type === 'TEMP_CLICKED') {
+          applyOverlay(event.data.temp);
+        } else if (event.data.type === 'RESET_TEMP') {
+          overlay.style.opacity = 0;
+        }
+      });
+
+    } catch (e) {
+      console.error("Error inicializando API Shapespark:", e);
+    }
+  };
+
+  init();
+});
