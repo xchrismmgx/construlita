@@ -1,7 +1,12 @@
+/**
+ * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS
+ * Este script gestiona materiales y aplica un filtro de color global.
+ */
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
   const GLOBAL_COLOR_INTENSITY = 0.5;
 
+  // Configuración de Zonas
   const ZONES_CONFIG = [
     {
       panelHtmlId: "container-sala",
@@ -28,22 +33,39 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const originalMaterials = {};
 
-  const kelvinToRGB = (kelvin) => {
-    let temp = kelvin / 100;
-    let r, g, b;
-    if (temp <= 66) {
-      r = 255;
-      g = 99.4708025861 * Math.log(temp) - 161.1195681661;
-      b = temp <= 19 ? 0 : 138.5177312231 * Math.log(temp - 10) - 305.0447927307;
-    } else {
-      r = 329.698727446 * Math.pow(temp - 60, -0.1332047592);
-      g = 288.1221695283 * Math.pow(temp - 60, -0.0755148492);
-      b = 255;
-    }
-    const clamp = (v) => Math.min(255, Math.max(0, v)) / 255;
-    return { r: clamp(r), g: clamp(g), b: clamp(b) };
+  // --- Sistema de Overlay (Tinte de Color) ---
+  const overlay = document.createElement('div');
+  overlay.id = 'global-temp-overlay';
+  Object.assign(overlay.style, {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none',
+    zIndex: 9999,
+    mixBlendMode: 'color',
+    transition: 'background-color 0.8s ease, opacity 0.8s ease',
+    opacity: 0
+  });
+  document.body.appendChild(overlay);
+
+  const TEMP_CONFIG = {
+    '2700': { color: '#ff8a00', intensity: 0.10 },
+    '3000': { color: '#ffb400', intensity: 0.20 },
+    '4000': { color: '#ffffff', intensity: 0.50 },
+    '6000': { color: '#0070ff', intensity: 0.95 }
   };
 
+  const applyColorEffect = (temp) => {
+    const cfg = TEMP_CONFIG[temp];
+    if (cfg) {
+      overlay.style.backgroundColor = cfg.color;
+      overlay.style.opacity = cfg.intensity;
+    }
+  };
+
+  // --- Gestión de Materiales ---
   const storeOriginalMaterialStates = () => {
     ZONES_CONFIG.forEach(zone => {
       zone.materials.forEach(matName => {
@@ -55,21 +77,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
-  const applyTemperatureToZone = (zone, kelvin) => {
-    const rgb = kelvinToRGB(kelvin);
-    zone.materials.forEach(matName => {
-      const mat = viewer.findMaterial(matName);
-      if (mat) {
-        mat.baseColor.setRGB(rgb.r * GLOBAL_COLOR_INTENSITY, rgb.g * GLOBAL_COLOR_INTENSITY, rgb.b * GLOBAL_COLOR_INTENSITY);
-        viewer.requestFrame();
-      }
-    });
-  };
-
   const updatePanelVisibility = (viewName) => {
     ZONES_CONFIG.forEach(zone => {
       const panel = document.getElementById(zone.panelHtmlId);
-      if (panel) panel.style.display = zone.triggerViews.includes(viewName) ? "block" : "none";
+      if (panel) {
+        panel.style.display = zone.triggerViews.includes(viewName) ? "block" : "none";
+      }
     });
   };
 
@@ -80,15 +93,14 @@ document.addEventListener("DOMContentLoaded", () => {
     panel.querySelectorAll(".temp-btn").forEach(btn => {
       btn.onclick = () => {
         const temp = btn.dataset.temp;
-        applyOverlay(temp);
-        applyTemperatureToZone(zone, parseInt(temp));
+        applyColorEffect(temp); // Aplicar tinte global
       };
     });
 
     panel.querySelector(".close-panel-btn").onclick = () => panel.style.display = "none";
 
     panel.querySelector(".reset-btn").onclick = () => {
-      overlay.style.opacity = 0;
+      overlay.style.opacity = 0; // Quitar tinte
       zone.materials.forEach(matName => {
         const mat = viewer.findMaterial(matName);
         const orig = originalMaterials[matName];
@@ -99,6 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     };
 
+    // Sliders
     const track = panel.querySelector(".vertical-slider-track");
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
@@ -116,44 +129,30 @@ document.addEventListener("DOMContentLoaded", () => {
       const rect = track.getBoundingClientRect();
       const p = ((rect.bottom - e.clientY) / rect.height) * 100;
       updateSliderUI(p);
-      viewer.switchToView(zone.sliderViews[Math.round((p / 100) * (zone.sliderViews.length - 1))]);
+      const idx = Math.round((p / 100) * (zone.sliderViews.length - 1));
+      viewer.switchToView(zone.sliderViews[idx]);
     };
   };
 
-  const overlay = document.createElement('div');
-  overlay.id = 'temp-overlay';
-  Object.assign(overlay.style, {
-    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-    pointerEvents: 'none', zIndex: 9999, mixBlendMode: 'color',
-    transition: 'background-color 0.5s ease, opacity 0.5s ease', opacity: 0
-  });
-  document.body.appendChild(overlay);
-
-  const TEMP_COLORS = {
-    '2700': { color: '#ff8a00', intensity: 0.10 },
-    '3000': { color: '#ffb400', intensity: 0.20 },
-    '4000': { color: '#ffffff', intensity: 0.50 },
-    '6000': { color: '#0070ff', intensity: 0.95 }
-  };
-
-  const applyOverlay = (temp) => {
-    const config = TEMP_COLORS[temp];
-    if (config) {
-      overlay.style.backgroundColor = config.color;
-      overlay.style.opacity = config.intensity;
+  // --- Inicialización ---
+  const WALK = window.WALK || {};
+  const init = () => {
+    try {
+      viewer = WALK.getViewer();
+      if (!viewer) {
+        setTimeout(init, 100);
+        return;
+      }
+      viewer.setAllMaterialsEditable();
+      viewer.onSceneReadyToDisplay(() => {
+        storeOriginalMaterialStates();
+        ZONES_CONFIG.forEach(initializePanelComponents);
+      });
+      viewer.onViewSwitchDone(updatePanelVisibility);
+    } catch (e) {
+      console.error("Error en script Shapespark:", e);
     }
   };
 
-  const WALK = window.WALK || {};
-  const init = () => {
-    viewer = WALK.getViewer();
-    if (!viewer) { setTimeout(init, 100); return; }
-    viewer.setAllMaterialsEditable();
-    viewer.onSceneReadyToDisplay(() => {
-      storeOriginalMaterialStates();
-      ZONES_CONFIG.forEach(z => initializePanelComponents(z));
-    });
-    viewer.onViewSwitchDone(updatePanelVisibility);
-  };
   init();
 });
