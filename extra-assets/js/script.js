@@ -1,6 +1,6 @@
 /**
- * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS + JOYSTICKS (Keyboard Simulation)
- * Este script gestiona materiales, aplica filtros de color y navegación por joystick mediante simulación de teclado.
+ * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS + JOYSTICKS
+ * Script completo con temperatura, joysticks y efecto head bob
  */
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
@@ -77,27 +77,37 @@ document.addEventListener("DOMContentLoaded", () => {
   const initializePanelComponents = (zone) => {
     const panel = document.getElementById(zone.panelHtmlId);
     if (!panel) return;
+
     panel.querySelectorAll(".temp-btn").forEach(btn => {
       btn.onclick = () => applyColorEffect(btn.dataset.temp);
     });
+
     panel.querySelector(".close-panel-btn").onclick = () => panel.style.display = "none";
+
     panel.querySelector(".reset-btn").onclick = () => {
       overlay.style.opacity = 0;
       zone.materials.forEach(matName => {
         const mat = viewer.findMaterial(matName);
         const orig = originalMaterials[matName];
-        if (mat && orig) { mat.baseColor.copy(orig.baseColor); viewer.requestFrame(); }
+        if (mat && orig) {
+          mat.baseColor.copy(orig.baseColor);
+          viewer.requestFrame();
+        }
       });
     };
+
     const track = panel.querySelector(".vertical-slider-track");
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
     const labelDisplay = panel.querySelector(".current-view-percentage");
+
     const updateSliderUI = (percent) => {
       const p = Math.max(0, Math.min(100, percent));
-      thumb.style.bottom = `${p}%`; progress.style.height = `${p}%`;
+      thumb.style.bottom = `${p}%`;
+      progress.style.height = `${p}%`;
       labelDisplay.innerText = zone.viewLabels[Math.round((p / 100) * (zone.viewLabels.length - 1))];
     };
+
     track.onclick = (e) => {
       const rect = track.getBoundingClientRect();
       const p = ((rect.bottom - e.clientY) / rect.height) * 100;
@@ -106,7 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   };
 
-  // --- SISTEMA DE JOYSTICKS CON SIMULACIÓN DE TECLADO ---
+  // --- JOYSTICKS CON SIMULACIÓN DE TECLADO ---
   class Key {
     constructor(keyCode) {
       this.keyCode = keyCode;
@@ -125,12 +135,8 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const activeKeys = {
-    W: new Key(87), // Adelante
-    S: new Key(83), // Atrás
-    A: new Key(65), // Izquierda
-    D: new Key(68), // Derecha
-    ArrowLeft: new Key(37),  // Girar izquierda
-    ArrowRight: new Key(39)  // Girar derecha
+    W: new Key(87), S: new Key(83), A: new Key(65), D: new Key(68),
+    ArrowLeft: new Key(37), ArrowRight: new Key(39)
   };
 
   const setupJoystick = (id, stateKey) => {
@@ -175,79 +181,55 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener('touchend', handleEnd);
   };
 
-  // Variables para el efecto de balanceo (Head Bob)
+  // Head Bob
   let headBobTime = 0;
-  const headBobSpeed = 7; // Velocidad del balanceo
-  const headBobAmount = 0.015; // Amplitud del balanceo (muy sutil)
+  const headBobSpeed = 7;
+  const headBobAmount = 0.015;
 
   const joystickUpdateLoop = () => {
     let isMoving = false;
+    const threshold = 0.1;
 
-    // Joystick Izquierdo: WASD (Movimiento)
     if (joystickStates.left.active) {
-      const threshold = 0.1;
-      // Adelante/Atrás
       if (joystickStates.left.y > threshold) {
-        activeKeys.W.down();
-        activeKeys.S.up();
-        isMoving = true;
+        activeKeys.W.down(); activeKeys.S.up(); isMoving = true;
       } else if (joystickStates.left.y < -threshold) {
-        activeKeys.S.down();
-        activeKeys.W.up();
-        isMoving = true;
+        activeKeys.S.down(); activeKeys.W.up(); isMoving = true;
       } else {
-        activeKeys.W.up();
-        activeKeys.S.up();
+        activeKeys.W.up(); activeKeys.S.up();
       }
-      // Izquierda/Derecha
+
       if (joystickStates.left.x < -threshold) {
-        activeKeys.A.down();
-        activeKeys.D.up();
-        isMoving = true;
+        activeKeys.A.down(); activeKeys.D.up(); isMoving = true;
       } else if (joystickStates.left.x > threshold) {
-        activeKeys.D.down();
-        activeKeys.A.up();
-        isMoving = true;
+        activeKeys.D.down(); activeKeys.A.up(); isMoving = true;
       } else {
-        activeKeys.A.up();
-        activeKeys.D.up();
+        activeKeys.A.up(); activeKeys.D.up();
       }
     } else {
-      activeKeys.W.up();
-      activeKeys.S.up();
-      activeKeys.A.up();
-      activeKeys.D.up();
+      activeKeys.W.up(); activeKeys.S.up(); activeKeys.A.up(); activeKeys.D.up();
     }
 
-    // Joystick Derecho: Flechas (Rotación)
     if (joystickStates.right.active) {
-      const threshold = 0.1;
       if (joystickStates.right.x < -threshold) {
-        activeKeys.ArrowLeft.down();
-        activeKeys.ArrowRight.up();
+        activeKeys.ArrowLeft.down(); activeKeys.ArrowRight.up();
       } else if (joystickStates.right.x > threshold) {
-        activeKeys.ArrowRight.down();
-        activeKeys.ArrowLeft.up();
+        activeKeys.ArrowRight.down(); activeKeys.ArrowLeft.up();
       } else {
-        activeKeys.ArrowLeft.up();
-        activeKeys.ArrowRight.up();
+        activeKeys.ArrowLeft.up(); activeKeys.ArrowRight.up();
       }
     } else {
-      activeKeys.ArrowLeft.up();
-      activeKeys.ArrowRight.up();
+      activeKeys.ArrowLeft.up(); activeKeys.ArrowRight.up();
     }
 
-    // Efecto de balanceo al caminar (Head Bob)
     if (viewer && isMoving) {
-      headBobTime += 0.016; // ~60fps
+      headBobTime += 0.016;
       const bobOffset = Math.sin(headBobTime * headBobSpeed) * headBobAmount;
-
       const currentPos = viewer.getCameraPosition();
       const newView = new WALK.View();
       newView.position.x = currentPos.x;
       newView.position.y = currentPos.y + bobOffset;
       newView.position.z = currentPos.z;
-
       const currentRot = viewer.getCameraRotation();
       newView.rotation.yaw = currentRot.yaw;
       newView.rotation.pitch = currentRot.pitch;
