@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
     },
     {
       panelHtmlId: "container-decorativas",
-      triggerViews: ["Panel_decorativas", "deco_10", "deco_40", "deco_60", "deco_80", "deco_100"],
+      triggerViews: ["panel_decorativas", "deco_10", "deco_40", "deco_60", "deco_80", "deco_100"],
       materials: [], // No controla materiales - el LUT es global
       sliderViews: ["deco_10", "deco_40", "deco_60", "deco_80", "deco_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
