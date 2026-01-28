@@ -1,14 +1,9 @@
 /**
- * IMPLEMENTACIÓN API SHAPESPARK - ACTUALIZADO PARA EXTRA-ASSETS
- * Este script gestiona la edición de materiales y la UI personalizada.
+ * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS
+ * Lógica consolidada para temperatura y sliders de intensidad.
  */
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
-
-  // Factor de intensidad para el cálculo de Kelvin a RGB
-  const GLOBAL_COLOR_INTENSITY = 0.5;
-
-  // Configuración de Zonas (Misma lógica anterior para no romper funcionalidad)
   const ZONES_CONFIG = [
     {
       panelHtmlId: "container-sala",
@@ -34,211 +29,138 @@ document.addEventListener("DOMContentLoaded", () => {
     {
       panelHtmlId: "container-decorativas",
       triggerViews: ["panel_decorativas", "deco_10", "deco_40", "deco_60", "deco_80", "deco_100"],
-      materials: [], // No controla materiales - el LUT es global
+      materials: [],
       sliderViews: ["deco_10", "deco_40", "deco_60", "deco_80", "deco_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     }
   ];
 
   const originalMaterials = {};
+  const TEMP_CONFIG = {
+    '2700': { color: '#ffb400', intensity: 0.55 },
+    '3000': { color: '#ffde65', intensity: 0.25 },
+    '4000': { color: '#ffffff', intensity: 0.50 },
+    '6000': { color: '#b1e3fa', intensity: 0.50 }
+  };
 
-  // --- Utilidades de Color ---
-  const kelvinToRGB = (kelvin) => {
-    let temp = kelvin / 100;
-    let r, g, b;
+  // --- Sistema de Overlay (Tinte de Color) ---
+  const overlay = document.createElement('div');
+  overlay.id = 'global-temp-overlay';
+  Object.assign(overlay.style, {
+    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+    pointerEvents: 'none', zIndex: 9999, mixBlendMode: 'color',
+    transition: 'background-color 0.8s ease, opacity 0.8s ease', opacity: 0
+  });
+  document.body.appendChild(overlay);
 
-    if (temp <= 66) {
-      r = 255;
-      g = temp;
-      g = 99.4708025861 * Math.log(g) - 161.1195681661;
-      if (temp <= 19) {
-        b = 0;
-      } else {
-        b = temp - 10;
-        b = 138.5177312231 * Math.log(b) - 305.0447927307;
-      }
-    } else {
-      r = temp - 60;
-      r = 329.698727446 * Math.pow(r, -0.1332047592);
-      g = temp - 60;
-      g = 288.1221695283 * Math.pow(g, -0.0755148492);
-      b = 255;
+  const applyColorEffect = (temp) => {
+    const cfg = TEMP_CONFIG[temp];
+    if (cfg) {
+      overlay.style.backgroundColor = cfg.color;
+      overlay.style.opacity = cfg.intensity;
     }
-
-    const clamp = (v) => Math.min(255, Math.max(0, v)) / 255;
-    return { r: clamp(r), g: clamp(g), b: clamp(b) };
   };
 
-  // --- Gestión de Materiales ---
-  const storeOriginalMaterialStates = () => {
-    ZONES_CONFIG.forEach(zone => {
-      zone.materials.forEach(matName => {
-        const mat = viewer.findMaterial(matName);
-        if (mat && !originalMaterials[matName]) {
-          originalMaterials[matName] = {
-            baseColor: mat.baseColor.clone(),
-            baseColorTexture: mat.baseColorTexture
-          };
-        }
-      });
+  const updatePanelVisibility = (v) => {
+    ZONES_CONFIG.forEach(z => {
+      const p = document.getElementById(z.panelHtmlId);
+      if (p) p.style.display = z.triggerViews.includes(v) ? "block" : "none";
     });
   };
 
-  const applyTemperatureToZone = (zone, kelvin) => {
-    const rgb = kelvinToRGB(kelvin);
-    zone.materials.forEach(matName => {
-      const mat = viewer.findMaterial(matName);
-      if (mat) {
-        mat.baseColor.setRGB(
-          rgb.r * GLOBAL_COLOR_INTENSITY,
-          rgb.g * GLOBAL_COLOR_INTENSITY,
-          rgb.b * GLOBAL_COLOR_INTENSITY
-        );
-        viewer.requestFrame();
-      }
-    });
-  };
-
-  // --- UI & Eventos ---
-  const updatePanelVisibility = (viewName) => {
-    ZONES_CONFIG.forEach(zone => {
-      const panel = document.getElementById(zone.panelHtmlId);
-      if (zone.triggerViews.includes(viewName)) {
-        panel.style.display = "block";
-      } else {
-        panel.style.display = "none";
-      }
-    });
-  };
+  // --- Draggable Slider Logic (Centralized) ---
+  let activeDrag = null;
 
   const initializePanelComponents = (zone) => {
     const panel = document.getElementById(zone.panelHtmlId);
     if (!panel) return;
 
-    // Botones de Temperatura
-    panel.querySelectorAll(".temp-btn").forEach(btn => {
-      btn.onclick = () => {
-        const temp = btn.dataset.temp;
-        // Notificar al padre (Webflow) para que gestione el LUT
-        if (window.parent !== window) {
-          window.parent.postMessage({ type: 'TEMP_CLICKED', temp: temp }, '*');
-        }
-        // Mantener la funcionalidad actual de materiales si se desea
-        applyTemperatureToZone(zone, parseInt(temp));
-      };
+    panel.querySelectorAll(".temp-btn").forEach(b => {
+      b.onclick = () => applyColorEffect(b.dataset.temp);
     });
 
-    // Botón Cerrar
-    panel.querySelector(".close-panel-btn").onclick = () => {
-      panel.style.display = "none";
-    };
-
-    // Botón Reset
+    panel.querySelector(".close-panel-btn").onclick = () => panel.style.display = "none";
     panel.querySelector(".reset-btn").onclick = () => {
-      if (window.parent !== window) {
-        window.parent.postMessage({ type: 'RESET_TEMP' }, '*');
-      }
-      zone.materials.forEach(matName => {
-        const mat = viewer.findMaterial(matName);
-        const orig = originalMaterials[matName];
-        if (mat && orig) {
-          mat.baseColor.copy(orig.baseColor);
-          viewer.requestFrame();
-        }
-      });
+      overlay.style.opacity = 0;
+      updateSlider(zone, 0); // Reset slider position to 0%
     };
 
-    // Sliders - Enhanced with percentage labels and drag support
     const track = panel.querySelector(".vertical-slider-track");
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
     const labelDisplay = panel.querySelector(".current-view-percentage");
     const labelsContainer = panel.querySelector(".view-labels-container");
 
-    // Generate percentage labels from 0% to 100%
+    // Generate labels
     labelsContainer.innerHTML = '';
     for (let i = 0; i <= 10; i++) {
-      const percent = i * 10;
-      const label = document.createElement('div');
-      label.className = 'view-label';
-      label.textContent = `${percent}%`;
-      label.style.bottom = `${percent}%`;
-      label.style.transform = 'translateY(50%)';
-      labelsContainer.appendChild(label);
+      const p = i * 10;
+      const l = document.createElement('div');
+      l.className = 'view-label'; l.textContent = `${p}%`;
+      l.style.bottom = `${p}%`; l.style.transform = 'translateY(50%)';
+      labelsContainer.appendChild(l);
     }
 
-    let currentPercent = 0; // Start at 0%
-
-    const updateSliderUI = (percent) => {
-      const p = Math.max(0, Math.min(100, percent));
-      currentPercent = p;
+    const updateSlider = (z, p) => {
+      p = Math.max(0, Math.min(100, p));
       thumb.style.bottom = `${p}%`;
       progress.style.height = `${p}%`;
 
-      // Update active label
-      const allLabels = labelsContainer.querySelectorAll('.view-label');
-      allLabels.forEach(lbl => lbl.classList.remove('active'));
-      const nearestLabelIndex = Math.round(p / 10);
-      if (allLabels[nearestLabelIndex]) {
-        allLabels[nearestLabelIndex].classList.add('active');
-      }
+      const allL = labelsContainer.querySelectorAll('.view-label');
+      allL.forEach(lbl => lbl.classList.remove('active'));
+      const nearest = Math.round(p / 10);
+      if (allL[nearest]) allL[nearest].classList.add('active');
 
-      // Map to nearest view index
-      const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
-      labelDisplay.innerText = zone.viewLabels[index] || '0%';
+      const idx = Math.round((p / 100) * (z.viewLabels.length - 1));
+      labelDisplay.innerText = z.viewLabels[idx] || '0%';
+      return p;
     };
 
-    const switchToNearestView = (percent) => {
-      const idx = Math.round((percent / 100) * (zone.sliderViews.length - 1));
-      if (zone.sliderViews[idx]) {
-        viewer.switchToView(zone.sliderViews[idx]);
-      }
+    const switchToNearest = (z, p) => {
+      const idx = Math.round((p / 100) * (z.sliderViews.length - 1));
+      if (z.sliderViews[idx]) WALK.getViewer().switchToView(z.sliderViews[idx]);
     };
 
-    // Click on track
     track.onclick = (e) => {
-      const rect = track.getBoundingClientRect();
-      const p = ((rect.bottom - e.clientY) / rect.height) * 100;
-      updateSliderUI(p);
-      switchToNearestView(p);
+      const r = track.getBoundingClientRect();
+      const p = updateSlider(zone, ((r.bottom - e.clientY) / r.height) * 100);
+      switchToNearest(zone, p);
     };
 
-    // Drag functionality
-    let isDragging = false;
-    thumb.addEventListener('mousedown', (e) => {
-      isDragging = true;
+    thumb.onmousedown = (e) => {
+      activeDrag = { zone, track, updateSlider, switchToNearest, currentP: 0 };
       e.preventDefault();
-    });
+    };
 
-    document.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      const rect = track.getBoundingClientRect();
-      const p = ((rect.bottom - e.clientY) / rect.height) * 100;
-      updateSliderUI(p);
-    });
-
-    document.addEventListener('mouseup', () => {
-      if (isDragging) {
-        isDragging = false;
-        switchToNearestView(currentPercent);
-      }
-    });
-
-    // Initialize at 0%
-    updateSliderUI(0);
+    updateSlider(zone, 0); // Init at 0%
   };
 
-  // --- Inicialización Principal ---
+  // Global Drag Events
+  document.addEventListener('mousemove', (e) => {
+    if (!activeDrag) return;
+    const r = activeDrag.track.getBoundingClientRect();
+    activeDrag.currentP = activeDrag.updateSlider(activeDrag.zone, ((r.bottom - e.clientY) / r.height) * 100);
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!activeDrag) return;
+    activeDrag.switchToNearest(activeDrag.zone, activeDrag.currentP);
+    activeDrag = null;
+  });
+
+  // Message listener for external control
+  window.addEventListener('message', (e) => {
+    if (e.data.type === 'TEMP_CLICKED') applyColorEffect(e.data.temp);
+    if (e.data.type === 'RESET_TEMP') overlay.style.opacity = 0;
+  });
+
   const WALK = window.WALK || {};
-
   const init = () => {
-    try {
-      viewer = WALK.getViewer();
-      if (!viewer) {
-        setTimeout(init, 100);
-        return;
-      }
-
-      viewer.setAllMaterialsEditable();
-
-   
+    const v = (typeof WALK.getViewer === 'function') ? WALK.getViewer() : null;
+    if (!v) { setTimeout(init, 100); return; }
+    v.setAllMaterialsEditable();
+    v.onSceneReadyToDisplay(() => ZONES_CONFIG.forEach(initializePanelComponents));
+    v.onViewSwitchDone(updatePanelVisibility);
+  };
+  init();
+});
