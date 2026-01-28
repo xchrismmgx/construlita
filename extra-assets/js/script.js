@@ -148,28 +148,84 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     };
 
-    // Lógica de Sliders (Cámaras/Vistas)
+    // Sliders - Enhanced with percentage labels and drag support
     const track = panel.querySelector(".vertical-slider-track");
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
     const labelDisplay = panel.querySelector(".current-view-percentage");
+    const labelsContainer = panel.querySelector(".view-labels-container");
+
+    // Generate percentage labels from 0% to 100%
+    labelsContainer.innerHTML = '';
+    for (let i = 0; i <= 10; i++) {
+      const percent = i * 10;
+      const label = document.createElement('div');
+      label.className = 'view-label';
+      label.textContent = `${percent}%`;
+      label.style.bottom = `${percent}%`;
+      label.style.transform = 'translateY(50%)';
+      labelsContainer.appendChild(label);
+    }
+
+    let currentPercent = 0; // Start at 0%
 
     const updateSliderUI = (percent) => {
       const p = Math.max(0, Math.min(100, percent));
+      currentPercent = p;
       thumb.style.bottom = `${p}%`;
       progress.style.height = `${p}%`;
 
+      // Update active label
+      const allLabels = labelsContainer.querySelectorAll('.view-label');
+      allLabels.forEach(lbl => lbl.classList.remove('active'));
+      const nearestLabelIndex = Math.round(p / 10);
+      if (allLabels[nearestLabelIndex]) {
+        allLabels[nearestLabelIndex].classList.add('active');
+      }
+
+      // Map to nearest view index
       const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
-      labelDisplay.innerText = zone.viewLabels[index];
+      labelDisplay.innerText = zone.viewLabels[index] || '0%';
     };
 
+    const switchToNearestView = (percent) => {
+      const idx = Math.round((percent / 100) * (zone.sliderViews.length - 1));
+      if (zone.sliderViews[idx]) {
+        viewer.switchToView(zone.sliderViews[idx]);
+      }
+    };
+
+    // Click on track
     track.onclick = (e) => {
       const rect = track.getBoundingClientRect();
       const p = ((rect.bottom - e.clientY) / rect.height) * 100;
       updateSliderUI(p);
-      const viewIndex = Math.round((p / 100) * (zone.sliderViews.length - 1));
-      viewer.switchToView(zone.sliderViews[viewIndex]);
+      switchToNearestView(p);
     };
+
+    // Drag functionality
+    let isDragging = false;
+    thumb.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const rect = track.getBoundingClientRect();
+      const p = ((rect.bottom - e.clientY) / rect.height) * 100;
+      updateSliderUI(p);
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        switchToNearestView(currentPercent);
+      }
+    });
+
+    // Initialize at 0%
+    updateSliderUI(0);
   };
 
   // --- Inicialización Principal ---
@@ -185,60 +241,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
       viewer.setAllMaterialsEditable();
 
-      viewer.onSceneReadyToDisplay(() => {
-        storeOriginalMaterialStates();
-        ZONES_CONFIG.forEach(zone => initializePanelComponents(zone));
-      });
-
-      viewer.onViewSwitchDone((viewName) => {
-        updatePanelVisibility(viewName);
-      });
-
-      // --- Sistema de Overlay para Temperatura (Alternativa a LUT) ---
-      const overlay = document.createElement('div');
-      overlay.id = 'temp-overlay';
-      Object.assign(overlay.style, {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-        zIndex: 9999,
-        mixBlendMode: 'color', // 'color' o 'soft-light' para un efecto natural
-        transition: 'background-color 0.5s ease, opacity 0.5s ease',
-        opacity: 0
-      });
-      document.body.appendChild(overlay);
-
-      const TEMP_COLORS = {
-        '2700': { color: '#ffb400', intensity: 0.55 },
-        '3000': { color: '#ffde65', intensity: 0.25 },
-        '4000': { color: '#ffffff', intensity: 0.50 },
-        '6000': { color: '#b1e3fa', intensity: 0.50 }
-      };
-
-      const applyOverlay = (temp) => {
-        const config = TEMP_COLORS[temp];
-        if (config) {
-          overlay.style.backgroundColor = config.color;
-          overlay.style.opacity = config.intensity;
-        }
-      };
-
-      // --- Manejo de mensajes del Padre (Webflow) ---
-      window.addEventListener('message', (event) => {
-        if (event.data.type === 'TEMP_CLICKED') {
-          applyOverlay(event.data.temp);
-        } else if (event.data.type === 'RESET_TEMP') {
-          overlay.style.opacity = 0;
-        }
-      });
-
-    } catch (e) {
-      console.error("Error inicializando API Shapespark:", e);
-    }
-  };
-
-  init();
-});
+   
