@@ -188,21 +188,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const labelDisplay = panel.querySelector(".current-view-percentage");
     const labelsContainer = panel.querySelector(".view-labels-container");
 
-    // Crear etiquetas laterales
+    // Clear and populate labels
     if (labelsContainer) {
       labelsContainer.innerHTML = "";
       zone.viewLabels.forEach((text, i) => {
-        const lbl = document.createElement("div");
+        const lbl = document.createElement("span");
         lbl.className = "view-label";
         lbl.innerText = text;
-        lbl.style.bottom = `${(i / (zone.viewLabels.length - 1)) * 100}%`;
         lbl.dataset.viewIndex = i;
-        lbl.onclick = (e) => {
-          e.stopPropagation();
-          const p = (i / (zone.viewLabels.length - 1)) * 100;
-          updateSliderUI(p);
-          viewer.switchToView(zone.sliderViews[i]);
-        };
+        // Calculate position (bottom-up)
+        const pos = (i / (zone.viewLabels.length - 1)) * 100;
+        lbl.style.bottom = `${pos}%`;
         labelsContainer.appendChild(lbl);
       });
     }
@@ -211,4 +207,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const p = Math.max(0, Math.min(100, percent));
       thumb.style.bottom = `${p}%`;
       progress.style.height = `${p}%`;
+      const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
+      labelDisplay.innerText = zone.viewLabels[index];
+
+      // Update active label
    
