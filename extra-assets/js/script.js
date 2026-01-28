@@ -218,21 +218,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const labelDisplay = panel.querySelector(".current-view-percentage");
     const labelsContainer = panel.querySelector(".view-labels-container");
 
-    // Crear etiquetas laterales (10%, 40%, etc.)
+    // Clear and populate labels
     if (labelsContainer) {
       labelsContainer.innerHTML = "";
       zone.viewLabels.forEach((text, i) => {
-        const lbl = document.createElement("div");
+        const lbl = document.createElement("span");
         lbl.className = "view-label";
         lbl.innerText = text;
-        // Posicionamiento vertical proporcional
-        lbl.style.bottom = `${(i / (zone.viewLabels.length - 1)) * 100}%`;
-        lbl.onclick = (e) => {
-          e.stopPropagation();
-          const p = (i / (zone.viewLabels.length - 1)) * 100;
-          updateSliderUI(p);
-          viewer.switchToView(zone.sliderViews[i]);
-        };
+        lbl.dataset.viewIndex = i;
+        // Calculate position (bottom-up)
+        const pos = (i / (zone.viewLabels.length - 1)) * 100;
+        lbl.style.bottom = `${pos}%`;
         labelsContainer.appendChild(lbl);
       });
     }
@@ -245,12 +241,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
       labelDisplay.innerText = zone.viewLabels[index];
 
-      // Activar la etiqueta correspondiente visualmente
-      if (labelsContainer) {
-        labelsContainer.querySelectorAll(".view-label").forEach((l, i) => {
-          l.classList.toggle("active", i === index);
-        });
-      }
+      // Update active label
+      panel.querySelectorAll(".view-label").forEach((lbl, i) => {
+        lbl.classList.toggle("active", i === index);
+      });
     };
 
     track.onclick = (e) => {
@@ -290,4 +284,45 @@ document.addEventListener("DOMContentLoaded", () => {
       Object.assign(overlay.style, {
         position: 'fixed',
         top: 0,
-   
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 9999,
+        mixBlendMode: 'color', // 'color' o 'soft-light' para un efecto natural
+        transition: 'background-color 0.5s ease, opacity 0.5s ease',
+        opacity: 0
+      });
+      document.body.appendChild(overlay);
+
+      const TEMP_COLORS = {
+        '2700': { color: '#ffb400', intensity: 0.55 },
+        '3000': { color: '#ffde65', intensity: 0.25 },
+        '4000': { color: '#ffffff', intensity: 0.50 },
+        '6000': { color: '#b1e3fa', intensity: 0.50 }
+      };
+
+      const applyOverlay = (temp) => {
+        const config = TEMP_COLORS[temp];
+        if (config) {
+          overlay.style.backgroundColor = config.color;
+          overlay.style.opacity = config.intensity;
+        }
+      };
+
+      // --- Manejo de mensajes del Padre (Webflow) ---
+      window.addEventListener('message', (event) => {
+        if (event.data.type === 'TEMP_CLICKED') {
+          applyOverlay(event.data.temp);
+        } else if (event.data.type === 'RESET_TEMP') {
+          overlay.style.opacity = 0;
+        }
+      });
+
+    } catch (e) {
+      console.error("Error inicializando API Shapespark:", e);
+    }
+  };
+
+  init();
+});
