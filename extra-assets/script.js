@@ -84,6 +84,20 @@ document.addEventListener("DOMContentLoaded", () => {
       materials: [],
       sliderViews: ["ace_10", "ace_40", "ace_60", "ace_80", "ace_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
+    },
+    {
+      panelHtmlId: "container-decorativas-general",
+      triggerViews: ["panel_decorativas_general", "deco_g_10", "deco_g_40", "deco_g_60", "deco_g_80", "deco_g_100"],
+      materials: [],
+      sliderViews: ["deco_g_10", "deco_g_40", "deco_g_60", "deco_g_80", "deco_g_100"],
+      viewLabels: ["10%", "40%", "60%", "80%", "100%"]
+    },
+    {
+      panelHtmlId: "container-resaltar-objetos",
+      triggerViews: ["panel_resaltar_objetos", "res_10", "res_40", "res_60", "res_80", "res_100"],
+      materials: [],
+      sliderViews: ["res_10", "res_40", "res_60", "res_80", "res_100"],
+      viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     }
   ];
 
@@ -172,43 +186,29 @@ document.addEventListener("DOMContentLoaded", () => {
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
     const labelDisplay = panel.querySelector(".current-view-percentage");
+    const labelsContainer = panel.querySelector(".view-labels-container");
+
+    // Crear etiquetas laterales
+    if (labelsContainer) {
+      labelsContainer.innerHTML = "";
+      zone.viewLabels.forEach((text, i) => {
+        const lbl = document.createElement("div");
+        lbl.className = "view-label";
+        lbl.innerText = text;
+        lbl.style.bottom = `${(i / (zone.viewLabels.length - 1)) * 100}%`;
+        lbl.dataset.viewIndex = i;
+        lbl.onclick = (e) => {
+          e.stopPropagation();
+          const p = (i / (zone.viewLabels.length - 1)) * 100;
+          updateSliderUI(p);
+          viewer.switchToView(zone.sliderViews[i]);
+        };
+        labelsContainer.appendChild(lbl);
+      });
+    }
 
     const updateSliderUI = (percent) => {
       const p = Math.max(0, Math.min(100, percent));
       thumb.style.bottom = `${p}%`;
       progress.style.height = `${p}%`;
-      const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
-      labelDisplay.innerText = zone.viewLabels[index];
-    };
-
-    track.onclick = (e) => {
-      const rect = track.getBoundingClientRect();
-      const p = ((rect.bottom - e.clientY) / rect.height) * 100;
-      updateSliderUI(p);
-      const idx = Math.round((p / 100) * (zone.sliderViews.length - 1));
-      viewer.switchToView(zone.sliderViews[idx]);
-    };
-  };
-
-  // --- Inicialización ---
-  const WALK = window.WALK || {};
-  const init = () => {
-    try {
-      viewer = WALK.getViewer();
-      if (!viewer) {
-        setTimeout(init, 100);
-        return;
-      }
-      viewer.setAllMaterialsEditable();
-      viewer.onSceneReadyToDisplay(() => {
-        storeOriginalMaterialStates();
-        ZONES_CONFIG.forEach(initializePanelComponents);
-      });
-      viewer.onViewSwitchDone(updatePanelVisibility);
-    } catch (e) {
-      console.error("Error en script Shapespark:", e);
-    }
-  };
-
-  init();
-});
+   
