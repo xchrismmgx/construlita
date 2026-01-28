@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
     },
     {
       panelHtmlId: "container-trabajo",
-      triggerViews: ["panel_luz_de_trabajo", "trab_10", "trab_40", "trab_60", "trab_80", "trab_100"],
+      triggerViews: ["panel_luz_trabajo", "trab_10", "trab_40", "trab_60", "trab_80", "trab_100"],
       materials: [],
       sliderViews: ["trab_10", "trab_40", "trab_60", "trab_80", "trab_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
@@ -54,7 +54,7 @@ document.addEventListener("DOMContentLoaded", () => {
     },
     {
       panelHtmlId: "container-lineal",
-      triggerViews: ["panel_iluminacion_lineal", "lineal_10", "lineal_40", "lineal_60", "lineal_80", "lineal_100"],
+      triggerViews: ["panel_iluminacíon_lineal", "lineal_10", "lineal_40", "lineal_60", "lineal_80", "lineal_100"],
       materials: [],
       sliderViews: ["lineal_10", "lineal_40", "lineal_60", "lineal_80", "lineal_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
