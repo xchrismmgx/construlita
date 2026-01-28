@@ -118,48 +118,48 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     };
 
-    // Sliders
+    // Sliders - Enhanced with percentage labels and drag support
     const track = panel.querySelector(".vertical-slider-track");
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
     const labelDisplay = panel.querySelector(".current-view-percentage");
+    const labelsContainer = panel.querySelector(".view-labels-container");
+
+    // Generate percentage labels from 0% to 100%
+    labelsContainer.innerHTML = '';
+    for (let i = 0; i <= 10; i++) {
+      const percent = i * 10;
+      const label = document.createElement('div');
+      label.className = 'view-label';
+      label.textContent = `${percent}%`;
+      label.style.bottom = `${percent}%`;
+      label.style.transform = 'translateY(50%)';
+      labelsContainer.appendChild(label);
+    }
+
+    let currentPercent = 0; // Start at 0%
 
     const updateSliderUI = (percent) => {
       const p = Math.max(0, Math.min(100, percent));
+      currentPercent = p;
       thumb.style.bottom = `${p}%`;
       progress.style.height = `${p}%`;
-      const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
-      labelDisplay.innerText = zone.viewLabels[index];
-    };
 
-    track.onclick = (e) => {
-      const rect = track.getBoundingClientRect();
-      const p = ((rect.bottom - e.clientY) / rect.height) * 100;
-      updateSliderUI(p);
-      const idx = Math.round((p / 100) * (zone.sliderViews.length - 1));
-      viewer.switchToView(zone.sliderViews[idx]);
-    };
-  };
-
-  // --- Inicialización ---
-  const WALK = window.WALK || {};
-  const init = () => {
-    try {
-      viewer = WALK.getViewer();
-      if (!viewer) {
-        setTimeout(init, 100);
-        return;
+      // Update active label
+      const allLabels = labelsContainer.querySelectorAll('.view-label');
+      allLabels.forEach(lbl => lbl.classList.remove('active'));
+      const nearestLabelIndex = Math.round(p / 10);
+      if (allLabels[nearestLabelIndex]) {
+        allLabels[nearestLabelIndex].classList.add('active');
       }
-      viewer.setAllMaterialsEditable();
-      viewer.onSceneReadyToDisplay(() => {
-        storeOriginalMaterialStates();
-        ZONES_CONFIG.forEach(initializePanelComponents);
-      });
-      viewer.onViewSwitchDone(updatePanelVisibility);
-    } catch (e) {
-      console.error("Error en script Shapespark:", e);
-    }
-  };
 
-  init();
-});
+      // Map to nearest view index
+      const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
+      labelDisplay.innerText = zone.viewLabels[index] || '0%';
+    };
+
+    const switchToNearestView = (percent) => {
+      const idx = Math.round((percent / 100) * (zone.sliderViews.length - 1));
+      if (zone.sliderViews[idx]) {
+        viewer.switchToView(zone.sliderViews[idx]);
+   
