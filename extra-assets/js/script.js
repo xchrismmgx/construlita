@@ -211,6 +211,21 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     };
 
+    // GENERAR ETIQUETAS DE PORCENTAJE (LABELS)
+    const labelsContainer = panel.querySelector(".view-labels-container");
+    if (labelsContainer) {
+      labelsContainer.innerHTML = ""; // Limpiar
+      zone.viewLabels.forEach((label, index) => {
+        const span = document.createElement("div");
+        span.className = "view-label";
+        span.innerText = label;
+        // Calcular posición: 0% abajo, 100% arriba
+        const pct = (index / (zone.viewLabels.length - 1)) * 100;
+        span.style.bottom = `${pct}%`;
+        labelsContainer.appendChild(span);
+      });
+    }
+
     // Lógica de Sliders (Cámaras/Vistas)
     const track = panel.querySelector(".vertical-slider-track");
     const thumb = panel.querySelector(".vertical-slider-thumb");
