@@ -219,7 +219,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const span = document.createElement("div");
         span.className = "view-label";
         span.innerText = label;
-        span.dataset.viewIndex = index; // Para CSS específico
         // Calcular posición: 0% abajo, 100% arriba
         const pct = (index / (zone.viewLabels.length - 1)) * 100;
         span.style.bottom = `${pct}%`;
