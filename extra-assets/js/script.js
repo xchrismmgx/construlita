@@ -216,22 +216,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
     const labelDisplay = panel.querySelector(".current-view-percentage");
-    const labelsContainer = panel.querySelector(".view-labels-container");
-
-    // Clear and populate labels
-    if (labelsContainer) {
-      labelsContainer.innerHTML = "";
-      zone.viewLabels.forEach((text, i) => {
-        const lbl = document.createElement("span");
-        lbl.className = "view-label";
-        lbl.innerText = text;
-        lbl.dataset.viewIndex = i;
-        // Calculate position (bottom-up)
-        const pos = (i / (zone.viewLabels.length - 1)) * 100;
-        lbl.style.bottom = `${pos}%`;
-        labelsContainer.appendChild(lbl);
-      });
-    }
 
     const updateSliderUI = (percent) => {
       const p = Math.max(0, Math.min(100, percent));
@@ -240,11 +224,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
       labelDisplay.innerText = zone.viewLabels[index];
-
-      // Update active label
-      panel.querySelectorAll(".view-label").forEach((lbl, i) => {
-        lbl.classList.toggle("active", i === index);
-      });
     };
 
     track.onclick = (e) => {
