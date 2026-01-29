@@ -61,10 +61,10 @@ document.addEventListener("DOMContentLoaded", () => {
     },
     {
       panelHtmlId: "container-texturas",
-      triggerViews: ["panel_texturas", "text_10"],
+      triggerViews: ["panel_texturas", "text_10", "text_40", "text_60", "text_80", "text_100"],
       materials: [],
-      sliderViews: ["text_10"],
-      viewLabels: ["10%"]
+      sliderViews: ["text_10", "text_40", "text_60", "text_80", "text_100"],
+      viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     },
     {
       panelHtmlId: "container-grazer",
