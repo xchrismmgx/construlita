@@ -186,22 +186,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const thumb = panel.querySelector(".vertical-slider-thumb");
     const progress = panel.querySelector(".vertical-slider-progress");
     const labelDisplay = panel.querySelector(".current-view-percentage");
-    const labelsContainer = panel.querySelector(".view-labels-container");
-
-    // Clear and populate labels
-    if (labelsContainer) {
-      labelsContainer.innerHTML = "";
-      zone.viewLabels.forEach((text, i) => {
-        const lbl = document.createElement("span");
-        lbl.className = "view-label";
-        lbl.innerText = text;
-        lbl.dataset.viewIndex = i;
-        // Calculate position (bottom-up)
-        const pos = (i / (zone.viewLabels.length - 1)) * 100;
-        lbl.style.bottom = `${pos}%`;
-        labelsContainer.appendChild(lbl);
-      });
-    }
 
     const updateSliderUI = (percent) => {
       const p = Math.max(0, Math.min(100, percent));
@@ -209,6 +193,36 @@ document.addEventListener("DOMContentLoaded", () => {
       progress.style.height = `${p}%`;
       const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
       labelDisplay.innerText = zone.viewLabels[index];
+    };
 
-      // Update active label
-   
+    track.onclick = (e) => {
+      const rect = track.getBoundingClientRect();
+      const p = ((rect.bottom - e.clientY) / rect.height) * 100;
+      updateSliderUI(p);
+      const idx = Math.round((p / 100) * (zone.sliderViews.length - 1));
+      viewer.switchToView(zone.sliderViews[idx]);
+    };
+  };
+
+  // --- Inicialización ---
+  const WALK = window.WALK || {};
+  const init = () => {
+    try {
+      viewer = WALK.getViewer();
+      if (!viewer) {
+        setTimeout(init, 100);
+        return;
+      }
+      viewer.setAllMaterialsEditable();
+      viewer.onSceneReadyToDisplay(() => {
+        storeOriginalMaterialStates();
+        ZONES_CONFIG.forEach(initializePanelComponents);
+      });
+      viewer.onViewSwitchDone(updatePanelVisibility);
+    } catch (e) {
+      console.error("Error en script Shapespark:", e);
+    }
+  };
+
+  init();
+});
