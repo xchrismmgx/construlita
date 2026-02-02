@@ -12,7 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const ZONES_CONFIG = [
     {
       panelHtmlId: "container-sala",
-      triggerViews: ["sala_descanso", "sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
+      triggerViews: ["sala_de_descanso", "sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
       materials: ["*40", "*50", "*60", "*70", "*80", "Aluminio", "mesita sala", "*30", "arte cuadro 2", "Concrete Bare Cast Murral"],
       sliderViews: ["sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
@@ -47,7 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
     },
     {
       panelHtmlId: "container-ambiental",
-      triggerViews: ["sala_juntas", "amb_10", "amb_40", "amb_60", "amb_80", "amb_100"],
+      triggerViews: ["sala_de_juntas", "amb_10", "amb_40", "amb_60", "amb_80", "amb_100"],
       materials: [],
       sliderViews: ["amb_10", "amb_40", "amb_60", "amb_80", "amb_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
@@ -318,4 +318,5 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  i
+  init();
+});
