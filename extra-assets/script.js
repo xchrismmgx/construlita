@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const ZONES_CONFIG = [
     {
       panelHtmlId: "container-sala",
-      triggerViews: ["panel_sala", "sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
+      triggerViews: ["sala_descanso", "sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
       materials: ["*40", "*50", "*60", "*70", "*80", "Aluminio", "mesita sala", "*30", "arte cuadro 2", "Concrete Bare Cast Murral"],
       sliderViews: ["sala_10", "sala_40", "sala_60", "sala_80", "sala_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
@@ -31,70 +31,70 @@ document.addEventListener("DOMContentLoaded", () => {
     },
     {
       panelHtmlId: "container-decorativas",
-      triggerViews: ["panel_decorativas", "deco_10", "deco_40", "deco_60", "deco_80", "deco_100"],
+      triggerViews: ["coworking_marketing", "deco_10", "deco_40", "deco_60", "deco_80", "deco_100"],
       materials: [], // No controla materiales - el LUT es global
       sliderViews: ["deco_10", "deco_40", "deco_60", "deco_80", "deco_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     },
     {
       panelHtmlId: "container-trabajo",
-      triggerViews: ["panel_luz_trabajo", "trab_10", "trab_40", "trab_60", "trab_80", "trab_100"],
+      triggerViews: ["coworking_diseño", "trab_10", "trab_40", "trab_60", "trab_80", "trab_100"],
       materials: [],
       sliderViews: ["trab_10", "trab_40", "trab_60", "trab_80", "trab_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     },
     {
       panelHtmlId: "container-ambiental",
-      triggerViews: ["panel_luz_ambiental", "amb_10", "amb_40", "amb_60", "amb_80", "amb_100"],
+      triggerViews: ["sala_juntas", "amb_10", "amb_40", "amb_60", "amb_80", "amb_100"],
       materials: [],
       sliderViews: ["amb_10", "amb_40", "amb_60", "amb_80", "amb_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     },
     {
       panelHtmlId: "container-lineal",
-      triggerViews: ["panel_iluminacíon_lineal", "lineal_10", "lineal_40", "lineal_60", "lineal_80", "lineal_100"],
+      triggerViews: ["oficina_contabilidad", "lineal_10", "lineal_40", "lineal_60", "lineal_80", "lineal_100"],
       materials: [],
       sliderViews: ["lineal_10", "lineal_40", "lineal_60", "lineal_80", "lineal_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     },
     {
       panelHtmlId: "container-texturas",
-      triggerViews: ["panel_texturas", "text_10", "text_40", "text_60", "text_80", "text_100"],
+      triggerViews: ["privado_2", "text_10", "text_40", "text_60", "text_80", "text_100"],
       materials: [],
       sliderViews: ["text_10", "text_40", "text_60", "text_80", "text_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     },
     {
       panelHtmlId: "container-grazer",
-      triggerViews: ["panel_grazer", "graz_10", "graz_40", "graz_60", "graz_80", "graz_100"],
+      triggerViews: ["circulacion_vertical", "graz_10", "graz_40", "graz_60", "graz_80", "graz_100"],
       materials: [],
       sliderViews: ["graz_10", "graz_40", "graz_60", "graz_80", "graz_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     },
     {
       panelHtmlId: "container-integracion",
-      triggerViews: ["panel_integracion", "int_10", "int_40", "int_60", "int_80", "int_100"],
+      triggerViews: ["privado_1", "int_10", "int_40", "int_60", "int_80", "int_100"],
       materials: [],
       sliderViews: ["int_10", "int_40", "int_60", "int_80", "int_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     },
     {
       panelHtmlId: "container-acento",
-      triggerViews: ["panel_acento", "ace_10", "ace_40", "ace_60", "ace_80", "ace_100"],
+      triggerViews: ["sala_espera", "ace_10", "ace_40", "ace_60", "ace_80", "ace_100"],
       materials: [],
       sliderViews: ["ace_10", "ace_40", "ace_60", "ace_80", "ace_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     },
     {
       panelHtmlId: "container-decorativas-general",
-      triggerViews: ["panel_decorativas_general", "deco_g_10", "deco_g_40", "deco_g_60", "deco_g_80", "deco_g_100"],
+      triggerViews: ["coworking_administrativo", "deco_g_10", "deco_g_40", "deco_g_60", "deco_g_80", "deco_g_100"],
       materials: [],
       sliderViews: ["deco_g_10", "deco_g_40", "deco_g_60", "deco_g_80", "deco_g_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
     },
     {
       panelHtmlId: "container-resaltar-objetos",
-      triggerViews: ["panel_resaltar_objetos", "res_10", "res_40", "res_60", "res_80", "res_100"],
+      triggerViews: ["acentos_verticales", "res_10", "res_40", "res_60", "res_80", "res_100"],
       materials: [],
       sliderViews: ["res_10", "res_40", "res_60", "res_80", "res_100"],
       viewLabels: ["10%", "40%", "60%", "80%", "100%"]
