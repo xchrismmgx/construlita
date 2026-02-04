@@ -245,9 +245,16 @@ document.addEventListener("DOMContentLoaded", () => {
     track.onclick = (e) => {
       const rect = track.getBoundingClientRect();
       const p = ((rect.bottom - e.clientY) / rect.height) * 100;
-      updateSliderUI(p);
-      const viewIndex = Math.round((p / 100) * (zone.sliderViews.length - 1));
-      viewer.switchToView(zone.sliderViews[viewIndex]);
+
+      const count = zone.sliderViews.length;
+      const idx = Math.round((p / 100) * (count - 1));
+      const safeIdx = Math.max(0, Math.min(count - 1, idx));
+
+      // Calcular posición ajustada al paso (snap)
+      const snappedP = (safeIdx / (count - 1)) * 100;
+
+      updateSliderUI(snappedP);
+      viewer.switchToView(zone.sliderViews[safeIdx]);
     };
   };
 
@@ -319,4 +326,5 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  i
+  init();
+});
