@@ -182,6 +182,9 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     };
 
+    // Parsear valores numéricos de las etiquetas (ej: "40%" -> 40)
+    const labelValues = zone.viewLabels.map(l => parseInt(l.replace(/\D/g, '')) || 0);
+
     // GENERAR ETIQUETAS DE PORCENTAJE (LABELS)
     const labelsContainer = panel.querySelector(".view-labels-container");
     if (labelsContainer) {
@@ -190,9 +193,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const span = document.createElement("div");
         span.className = "view-label";
         span.innerText = label;
-        // Calcular posición: 0% abajo, 100% arriba
-        const pct = (index / (zone.viewLabels.length - 1)) * 100;
-        span.style.bottom = `${pct}%`;
+        // Posición basada en VALOR NUMÉRICO real (10% a 10% altura, 40% a 40% altura...)
+        const val = labelValues[index];
+        span.style.bottom = `${val}%`;
         labelsContainer.appendChild(span);
       });
     }
@@ -203,42 +206,39 @@ document.addEventListener("DOMContentLoaded", () => {
     const progress = panel.querySelector(".vertical-slider-progress");
     const labelDisplay = panel.querySelector(".current-view-percentage");
 
-    const updateSliderUI = (percent) => {
+    const updateSliderUI = (percent, forceIndex = -1) => {
       const p = Math.max(0, Math.min(100, percent));
       thumb.style.bottom = `${p}%`;
       progress.style.height = `${p}%`;
-      const index = Math.round((p / 100) * (zone.viewLabels.length - 1));
-      labelDisplay.innerText = zone.viewLabels[index];
+
+      let index = forceIndex;
+      if (index === -1) {
+        // Encontrar el valor más cercano para mostrar etiqueta
+        let minDiff = Infinity;
+        labelValues.forEach((val, i) => {
+          const diff = Math.abs(val - p);
+          if (diff < minDiff) {
+            minDiff = diff;
+            index = i;
+          }
+        });
+      }
+      if (zone.viewLabels[index]) {
+        labelDisplay.innerText = zone.viewLabels[index];
+      }
     };
 
     track.onclick = (e) => {
       const rect = track.getBoundingClientRect();
-      const p = ((rect.bottom - e.clientY) / rect.height) * 100;
-      updateSliderUI(p);
-      const idx = Math.round((p / 100) * (zone.sliderViews.length - 1));
-      viewer.switchToView(zone.sliderViews[idx]);
-    };
-  };
+      const clickP = ((rect.bottom - e.clientY) / rect.height) * 100;
 
-  // --- Inicialización ---
-  const WALK = window.WALK || {};
-  const init = () => {
-    try {
-      viewer = WALK.getViewer();
-      if (!viewer) {
-        setTimeout(init, 100);
-        return;
-      }
-      viewer.setAllMaterialsEditable();
-      viewer.onSceneReadyToDisplay(() => {
-        storeOriginalMaterialStates();
-        ZONES_CONFIG.forEach(initializePanelComponents);
-      });
-      viewer.onViewSwitchDone(updatePanelVisibility);
-    } catch (e) {
-      console.error("Error en script Shapespark:", e);
-    }
-  };
-
-  init();
-});
+      // Encontrar el valor (snap) más cercano al click
+      let closestIdx = 0;
+      let minDiff = Infinity;
+      labelValues.forEach((val, i) => {
+        const diff = Math.abs(val - clickP);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestIdx = i;
+        }
+   
