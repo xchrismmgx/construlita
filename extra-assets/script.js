@@ -225,6 +225,9 @@ document.addEventListener("DOMContentLoaded", () => {
       updateSliderUI(snappedP);
       viewer.switchToView(zone.sliderViews[safeIdx]);
     };
+
+    // Inicializar slider en 100% por defecto
+    updateSliderUI(100);
   };
 
   // --- Inicialización ---
