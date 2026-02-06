@@ -121,8 +121,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.body.appendChild(overlay);
 
   const TEMP_CONFIG = {
-    '2700': { color: '#fed360', intensity: 0.35 },
-    '3000': { color: '#ffde65', intensity: 0.25 },
+    '2700': { color: '#fed360', intensity: 0.40 },
+    '3000': { color: '#ffe174ff', intensity: 0.25 },
     '4000': { color: '#ffffff', intensity: 0.50 },
     '6000': { color: '#c1e7f8ff', intensity: 0.35 }
   };
