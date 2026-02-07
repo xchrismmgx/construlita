@@ -2,124 +2,6 @@
  * IMPLEMENTACIÓN API SHAPESPARK + TINTADO CSS
  * Este script gestiona materiales y aplica un filtro de color global.
  */
-
-
-// ============================================================
-// PROTECCIÓN CONTRA INSPECCIÓN DEL NAVEGADOR
-// DESACTIVADO TEMPORALMENTE - Interfiere con la carga de Shapespark
-// ============================================================
-/*
-(function () {
-  'use strict';
-
-  // Bloquear clic derecho (contextmenu)
-  document.addEventListener('contextmenu', function (e) {
-    e.preventDefault();
-    return false;
-  }, false);
-
-  // Bloquear teclas comunes para abrir DevTools
-  document.addEventListener('keydown', function (e) {
-    // F12 - DevTools
-    if (e.key === 'F12' || e.keyCode === 123) {
-      e.preventDefault();
-      return false;
-    }
-
-    // Ctrl+Shift+I - Inspector
-    if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.keyCode === 73)) {
-      e.preventDefault();
-      return false;
-    }
-
-    // Ctrl+Shift+C - Selector de elementos
-    if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.keyCode === 67)) {
-      e.preventDefault();
-      return false;
-    }
-
-    // Ctrl+Shift+J - Consola (Chrome)
-    if (e.ctrlKey && e.shiftKey && (e.key === 'J' || e.keyCode === 74)) {
-      e.preventDefault();
-      return false;
-    }
-
-    // Ctrl+U - Ver código fuente
-    if (e.ctrlKey && (e.key === 'U' || e.keyCode === 85)) {
-      e.preventDefault();
-      return false;
-    }
-
-    // Ctrl+S - Guardar página
-    if (e.ctrlKey && (e.key === 'S' || e.keyCode === 83)) {
-      e.preventDefault();
-      return false;
-    }
-  }, false);
-})();
-*/
-
-
-// ============================================================
-// ELIMINADOR DE MARCA SHAPESPARK (VERSIÓN SEGURA CON CSS)
-// ============================================================
-(function () {
-  'use strict';
-
-  // Usar CSS para ocultar elementos de marca sin romper la funcionalidad
-  const hideShapesparkBranding = () => {
-    // Crear elemento de estilo si no existe
-    let styleElement = document.getElementById('shapespark-branding-hider');
-    if (!styleElement) {
-      styleElement = document.createElement('style');
-      styleElement.id = 'shapespark-branding-hider';
-      styleElement.innerHTML = `
-        /* Ocultar logos y enlaces de Shapespark */
-        a[href*="shapespark.com"],
-        a[href*="Shapespark.com"],
-        img[src*="shapespark"],
-        img[alt*="shapespark"],
-        img[alt*="Shapespark"],
-        .shapespark-logo,
-        .shapespark-watermark,
-        .shapespark-branding,
-        [class*="shapespark-brand"],
-        [id*="shapespark-brand"] {
-          display: none !important;
-          visibility: hidden !important;
-          opacity: 0 !important;
-          pointer-events: none !important;
-          width: 0 !important;
-          height: 0 !important;
-          position: absolute !important;
-          left: -9999px !important;
-        }
-        
-        /* Ocultar texto "Made with Shapespark" o similar */
-        [aria-label*="shapespark" i],
-        [aria-label*="Shapespark" i],
-        [title*="shapespark" i],
-        [title*="Shapespark" i] {
-          display: none !important;
-          visibility: hidden !important;
-        }
-      `;
-      document.head.appendChild(styleElement);
-    }
-  };
-
-  // Ejecutar inmediatamente
-  hideShapesparkBranding();
-
-  // Ejecutar cuando el DOM esté listo
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', hideShapesparkBranding);
-  }
-})();
-
-// ============================================================
-// CÓDIGO PRINCIPAL
-// ============================================================
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
   const GLOBAL_COLOR_INTENSITY = 0.5;
@@ -363,9 +245,92 @@ document.addEventListener("DOMContentLoaded", () => {
         ZONES_CONFIG.forEach(initializePanelComponents);
       });
       viewer.onViewSwitchDone(updatePanelVisibility);
+
+      // ACTIVAR PROTECCIONES SOLO DESPUÉS DE QUE SHAPESPARK CARGUE
+      viewer.onSceneReadyToDisplay(() => {
+        activateProtections();
+      });
     } catch (e) {
       console.error("Error en script Shapespark:", e);
     }
+  };
+
+  // --- Protecciones contra Inspector ---
+  const activateProtections = () => {
+    console.log("🔒 Protecciones activadas");
+
+    // Desactivar click derecho
+    document.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      return false;
+    }, false);
+
+    // Desactivar teclas de desarrollador
+    document.addEventListener('keydown', (e) => {
+      // F12 - Inspector
+      if (e.key === 'F12') {
+        e.preventDefault();
+        return false;
+      }
+
+      // Ctrl+Shift+I - Inspector
+      if (e.ctrlKey && e.shiftKey && e.key === 'I') {
+        e.preventDefault();
+        return false;
+      }
+
+      // Ctrl+Shift+J - Consola
+      if (e.ctrlKey && e.shiftKey && e.key === 'J') {
+        e.preventDefault();
+        return false;
+      }
+
+      // Ctrl+U - Ver código fuente
+      if (e.ctrlKey && e.key === 'u') {
+        e.preventDefault();
+        return false;
+      }
+
+      // Ctrl+Shift+C - Selector de elementos
+      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        e.preventDefault();
+        return false;
+      }
+
+      // F11 - Pantalla completa (opcional, descomenta si lo necesitas)
+      // if (e.key === 'F11') {
+      //   e.preventDefault();
+      //   return false;
+      // }
+    }, false);
+
+    // Detectar si las DevTools están abiertas
+    const detectDevTools = () => {
+      const threshold = 160;
+      const widthThreshold = window.outerWidth - window.innerWidth > threshold;
+      const heightThreshold = window.outerHeight - window.innerHeight > threshold;
+
+      if (widthThreshold || heightThreshold) {
+        console.log("⚠️ DevTools detectadas");
+        // Opcional: puedes agregar acciones adicionales aquí
+        // Por ejemplo: document.body.innerHTML = "";
+      }
+    };
+
+    // Verificar periódicamente
+    setInterval(detectDevTools, 1000);
+
+    // Desactivar selección de texto (opcional)
+    document.addEventListener('selectstart', (e) => {
+      e.preventDefault();
+      return false;
+    }, false);
+
+    // Desactivar arrastrar y soltar (opcional)
+    document.addEventListener('dragstart', (e) => {
+      e.preventDefault();
+      return false;
+    }, false);
   };
 
   init();
