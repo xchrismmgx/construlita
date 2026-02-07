@@ -2,6 +2,173 @@
  * IMPLEMENTACIÓN API SHAPESPARK - ACTUALIZADO PARA EXTRA-ASSETS
  * Este script gestiona la edición de materiales y la UI personalizada.
  */
+
+// ============================================================
+// PROTECCIÓN CONTRA INSPECCIÓN DEL NAVEGADOR
+// ============================================================
+(function () {
+  'use strict';
+
+  // Bloquear clic derecho (contextmenu)
+  document.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    // alert('El clic derecho está deshabilitado en este sitio.');
+    return false;
+  }, false);
+
+  // Bloquear teclas comunes para abrir DevTools
+  document.addEventListener('keydown', function (e) {
+    // F12 - DevTools
+    if (e.key === 'F12' || e.keyCode === 123) {
+      e.preventDefault();
+      // alert('Las herramientas de desarrollo están deshabilitadas.');
+      return false;
+    }
+
+    // Ctrl+Shift+I - Inspector
+    if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.keyCode === 73)) {
+      e.preventDefault();
+      // alert('El inspector está deshabilitado.');
+      return false;
+    }
+
+    // Ctrl+Shift+C - Selector de elementos
+    if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.keyCode === 67)) {
+      e.preventDefault();
+      return false;
+    }
+
+    // Ctrl+Shift+J - Consola (Chrome)
+    if (e.ctrlKey && e.shiftKey && (e.key === 'J' || e.keyCode === 74)) {
+      e.preventDefault();
+      return false;
+    }
+
+    // Ctrl+U - Ver código fuente
+    if (e.ctrlKey && (e.key === 'U' || e.keyCode === 85)) {
+      e.preventDefault();
+      return false;
+    }
+
+    // Ctrl+S - Guardar página
+    if (e.ctrlKey && (e.key === 'S' || e.keyCode === 83)) {
+      e.preventDefault();
+      return false;
+    }
+  }, false);
+
+  // Detectar si las DevTools están abiertas (método básico)
+  const devtoolsDetector = () => {
+    const threshold = 160;
+    if (window.outerWidth - window.innerWidth > threshold ||
+      window.outerHeight - window.innerHeight > threshold) {
+      // console.warn('DevTools detectadas');
+      // Puedes agregar acciones adicionales aquí si lo deseas
+    }
+  };
+
+  // Revisar periódicamente (opcional)
+  // setInterval(devtoolsDetector, 1000);
+})();
+
+// ============================================================
+// ============================================================
+(function () {
+  'use strict';
+
+  // Función para eliminar todos los elementos relacionados con Shapespark
+  const removeShapesparkBranding = () => {
+    // Buscar y eliminar elementos que contengan "shapespark" en diferentes atributos
+    const selectors = [
+      'a[href*="shapespark"]',
+      'img[src*="shapespark"]',
+      'img[alt*="shapespark"]',
+      '[class*="shapespark"]',
+      '[id*="shapespark"]',
+      'a[href*="Shapespark"]',
+      'img[src*="Shapespark"]',
+      'img[alt*="Shapespark"]',
+      '[class*="Shapespark"]',
+      '[id*="Shapespark"]'
+    ];
+
+    selectors.forEach(selector => {
+      const elements = document.querySelectorAll(selector);
+      elements.forEach(element => {
+        element.remove();
+      });
+    });
+
+    // Buscar y eliminar elementos de texto que mencionen "shapespark"
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+
+    const nodesToRemove = [];
+    let node;
+
+    while (node = walker.nextNode()) {
+      if (node.nodeValue && node.nodeValue.toLowerCase().includes('shapespark')) {
+        // Marcar el elemento padre para eliminación
+        const parent = node.parentElement;
+        if (parent && parent.tagName !== 'SCRIPT' && parent.tagName !== 'STYLE') {
+          nodesToRemove.push(parent);
+        }
+      }
+    }
+
+    // Eliminar los nodos marcados
+    nodesToRemove.forEach(element => {
+      element.remove();
+    });
+  };
+
+  // Ejecutar al cargar el DOM
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', removeShapesparkBranding);
+  } else {
+    removeShapesparkBranding();
+  }
+
+  // Ejecutar después de un breve delay para asegurar que todo esté cargado
+  setTimeout(removeShapesparkBranding, 500);
+
+  // Observar cambios en el DOM por si se agregan dinámicamente
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === 1) { // Element node
+          // Verificar si el nodo añadido contiene referencias a Shapespark
+          const nodeHTML = node.outerHTML || '';
+          if (nodeHTML.toLowerCase().includes('shapespark')) {
+            removeShapesparkBranding();
+          }
+        }
+      });
+    });
+  });
+
+  // Iniciar observación cuando el body esté disponible
+  const startObserver = () => {
+    if (document.body) {
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    } else {
+      setTimeout(startObserver, 100);
+    }
+  };
+
+  startObserver();
+})();
+
+// ============================================================
+// CÓDIGO PRINCIPAL 
+// ============================================================
 document.addEventListener("DOMContentLoaded", () => {
   let viewer = null;
 
