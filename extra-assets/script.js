@@ -3,9 +3,12 @@
  * Este script gestiona materiales y aplica un filtro de color global.
  */
 
+
 // ============================================================
 // PROTECCIÓN CONTRA INSPECCIÓN DEL NAVEGADOR
+// DESACTIVADO TEMPORALMENTE - Interfiere con la carga de Shapespark
 // ============================================================
+/*
 (function () {
   'use strict';
 
@@ -54,6 +57,8 @@
     }
   }, false);
 })();
+*/
+
 
 // ============================================================
 // ELIMINADOR DE MARCA SHAPESPARK (VERSIÓN SEGURA CON CSS)
