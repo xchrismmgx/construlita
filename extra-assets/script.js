@@ -56,99 +56,60 @@
 })();
 
 // ============================================================
-// ELIMINADOR DE MARCA SHAPESPARK
+// ELIMINADOR DE MARCA SHAPESPARK (VERSIÓN SEGURA CON CSS)
 // ============================================================
 (function () {
   'use strict';
 
-  // Función para eliminar todos los elementos relacionados con Shapespark
-  const removeShapesparkBranding = () => {
-    // Buscar y eliminar elementos que contengan "shapespark" en diferentes atributos
-    const selectors = [
-      'a[href*="shapespark"]',
-      'img[src*="shapespark"]',
-      'img[alt*="shapespark"]',
-      '[class*="shapespark"]',
-      '[id*="shapespark"]',
-      'a[href*="Shapespark"]',
-      'img[src*="Shapespark"]',
-      'img[alt*="Shapespark"]',
-      '[class*="Shapespark"]',
-      '[id*="Shapespark"]'
-    ];
-
-    selectors.forEach(selector => {
-      const elements = document.querySelectorAll(selector);
-      elements.forEach(element => {
-        element.remove();
-      });
-    });
-
-    // Buscar y eliminar elementos de texto que mencionen "shapespark"
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
-
-    const nodesToRemove = [];
-    let node;
-
-    while (node = walker.nextNode()) {
-      if (node.nodeValue && node.nodeValue.toLowerCase().includes('shapespark')) {
-        // Marcar el elemento padre para eliminación
-        const parent = node.parentElement;
-        if (parent && parent.tagName !== 'SCRIPT' && parent.tagName !== 'STYLE') {
-          nodesToRemove.push(parent);
+  // Usar CSS para ocultar elementos de marca sin romper la funcionalidad
+  const hideShapesparkBranding = () => {
+    // Crear elemento de estilo si no existe
+    let styleElement = document.getElementById('shapespark-branding-hider');
+    if (!styleElement) {
+      styleElement = document.createElement('style');
+      styleElement.id = 'shapespark-branding-hider';
+      styleElement.innerHTML = `
+        /* Ocultar logos y enlaces de Shapespark */
+        a[href*="shapespark.com"],
+        a[href*="Shapespark.com"],
+        img[src*="shapespark"],
+        img[alt*="shapespark"],
+        img[alt*="Shapespark"],
+        .shapespark-logo,
+        .shapespark-watermark,
+        .shapespark-branding,
+        [class*="shapespark-brand"],
+        [id*="shapespark-brand"] {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+          width: 0 !important;
+          height: 0 !important;
+          position: absolute !important;
+          left: -9999px !important;
         }
-      }
+        
+        /* Ocultar texto "Made with Shapespark" o similar */
+        [aria-label*="shapespark" i],
+        [aria-label*="Shapespark" i],
+        [title*="shapespark" i],
+        [title*="Shapespark" i] {
+          display: none !important;
+          visibility: hidden !important;
+        }
+      `;
+      document.head.appendChild(styleElement);
     }
-
-    // Eliminar los nodos marcados
-    nodesToRemove.forEach(element => {
-      element.remove();
-    });
   };
 
-  // Ejecutar al cargar el DOM
+  // Ejecutar inmediatamente
+  hideShapesparkBranding();
+
+  // Ejecutar cuando el DOM esté listo
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', removeShapesparkBranding);
-  } else {
-    removeShapesparkBranding();
+    document.addEventListener('DOMContentLoaded', hideShapesparkBranding);
   }
-
-  // Ejecutar después de un breve delay para asegurar que todo esté cargado
-  setTimeout(removeShapesparkBranding, 500);
-
-  // Observar cambios en el DOM por si se agregan dinámicamente
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === 1) { // Element node
-          // Verificar si el nodo añadido contiene referencias a Shapespark
-          const nodeHTML = node.outerHTML || '';
-          if (nodeHTML.toLowerCase().includes('shapespark')) {
-            removeShapesparkBranding();
-          }
-        }
-      });
-    });
-  });
-
-  // Iniciar observación cuando el body esté disponible
-  const startObserver = () => {
-    if (document.body) {
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
-    } else {
-      setTimeout(startObserver, 100);
-    }
-  };
-
-  startObserver();
 })();
 
 // ============================================================
