@@ -1,6 +1,6 @@
 ﻿/**
  * ============================================================================
- *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v14
+ *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v15
  * ============================================================================
  *  v9 (filtro "lentes de color", SIN tinte de materiales):
  *   - Se ELIMINÓ la Capa A (tinte de baseColor de materiales): NO cambia el
@@ -20,7 +20,7 @@
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
  *  Integración (body-end.html VR-only, DESPUÉS de vr-compat.js):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=14"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=15"></script>
  * ============================================================================
  */
 (function () {
@@ -219,6 +219,11 @@
   function patchMaterialsFilter() {
     if (FILTER_PATCHED) return;
     var mats = [];
+    // v15: REINTENTO AGRESIVO de setAllMaterialsEditable antes de pedir la
+    // lista — el viewer solo puebla los materiales editables si esta llamada
+    // ocurrió ANTES de cargar la escena; en el Quest a veces ganábamos tarde
+    // la carrera y getEditableMaterials devolvía 0 (tus logs).
+    try { if (viewer && typeof viewer.setAllMaterialsEditable === 'function') viewer.setAllMaterialsEditable(); } catch (e) { /* noop */ }
     try {
       if (viewer && typeof viewer.getEditableMaterials === 'function') mats = viewer.getEditableMaterials() || [];
       else { warn('getEditableMaterials no disponible; filtro shader NO aplicado'); return; }
@@ -227,7 +232,7 @@
     // B1: si la lista viene VACÍA (escena aún no lista), NO marcar como
     // parcheado — se reintentará en el siguiente applyTemp.
     if (!mats.length) {
-      log('filtro shader: 0 materiales editables aún (escena cargando); se reintentará');
+      log('filtro shader: 0 materiales editables (reintentando setAllMaterialsEditable + getEditableMaterials en próximos clics)');
       return;
     }
     FILTER_PATCHED = true;
@@ -723,6 +728,7 @@
     });
 
     xrSession.addEventListener('selectstart', onSelectStart);
+    xrSession.addEventListener('squeezestart', onSqueezeStart); // v15: grip Quest
     xrSession.requestAnimationFrame(xrTick);
 
     // v7: construir la UI VR de temperatura AL ENTRAR al casco:
@@ -776,6 +782,25 @@
         return;
       }
     } catch (e) { /* ignore */ }
+  }
+
+  // v15: CICLO DE TEMPERATURA POR GRIP DEL QUEST (gatillo lateral).
+  //   grip DERECHO -> siguiente temperatura (2700→3000→4000→6000→6500→2700…)
+  //   grip IZQUIERDO -> anterior.
+  // Ya no depende de botones 3D en el editor.
+  function onSqueezeStart(ev) {
+    if (!xrSession) return;
+    var hand = ev && ev.inputSource && ev.inputSource.handedness;
+    var dir = (hand === 'left') ? -1 : 1; // default: siguiente
+    cycleTemp(dir);
+  }
+
+  function cycleTemp(dir) {
+    var idx = activeTemp ? ORDER.indexOf(String(activeTemp)) : -1;
+    if (idx === -1) idx = (dir > 0) ? -1 : 0; // arranque: siguiente → 2700; anterior → 6500
+    idx = (idx + dir + ORDER.length) % ORDER.length;
+    log('GRIP -> ciclando temperatura a', ORDER[idx], '(mano:', (dir > 0 ? 'derecha' : 'izquierda') + ')');
+    applyTemp(ORDER[idx]);
   }
 
   var pendingSelect = null;
@@ -861,11 +886,14 @@
     if (!viewer) { setTimeout(init, 300); return; }
     log('viewer obtenido');
 
-    // Idempotente: el script principal ya lo llama; llamarlo 2x no rompe nada.
+    // v15: AGRESIVO — llamar setAllMaterialsEditable LO ANTES POSIBLE (aquí,
+    // en scene-ready, en load-complete y antes de cada getEditableMaterials).
+    // Si se llama tarde, getEditableMaterials devuelve 0 (tus logs de Quest).
     try { viewer.setAllMaterialsEditable(); } catch (e) { warn('setAllMaterialsEditable:', e); }
 
     try {
       viewer.onSceneReadyToDisplay(function () {
+        try { viewer.setAllMaterialsEditable(); } catch (e) {}
         // v6+: SOLO trabajo ligero aquí (registro de oyentes).
         wireDomButtons();
         wireEditorButtons();
@@ -875,6 +903,7 @@
     try {
       viewer.onSceneLoadComplete(function () {
         log('onSceneLoadComplete -> programando ensureScene diferida');
+        try { viewer.setAllMaterialsEditable(); } catch (e) {}
         ensureReady();
       });
     } catch (e) { warn('onSceneLoadComplete:', e); }
