@@ -1,6 +1,6 @@
 ﻿/**
  * ============================================================================
- *  VR-TEMP para Shapespark — Temperatura de color GLOBAL (WebXR) — v7
+ *  VR-TEMP para Shapespark — Temperatura de color GLOBAL (WebXR) — v8
  * ============================================================================
  *  4 presets: 2700K / 3000K / 4000K (neutro = original) / 6000K.
  *
@@ -24,7 +24,7 @@
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
  *  Integración (body-end.html, DESPUÉS de vr-compat.js):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=7"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=8"></script>
  * ============================================================================
  */
 (function () {
@@ -67,10 +67,18 @@
   var QUAD_DIST = 0.62;
   var STORAGE_KEY = 'vrtemp';
   var SKIP_MATERIAL = /sky|cielo/i;   // materiales que NO se tintan
-  // Botones del editor: acepta btn_2700 / boton-2700 / Btn 2700, etc.
-  var BTN_ANCHORED = /^(?:btn|boton|botón)[-_ ]?(2700|3000|4000|6000)$/i;
-  var BTN_LOOSE = /(?:^|[^0-9])(2700|3000|4000|6000)(?:[^0-9]|$)/; // fallback sobre node.type/name
+  // Botones del editor: acepta btn_2700 / boton-2700 / Btn 2700 / Luz 2700K / "2700"
+  // en type O en name (v8: match tolerante para detectar cualquier botón 3D
+  // que el usuario haya nombrado de forma distinta).
+  var BTN_ANCHORED = /^(?:btn|boton|botón|temperatura|temp|luz|cal)[-_ ]?(2700|3000|4000|6000)(?:K)?$/i;
+  var BTN_LOOSE = /(?:^|[^0-9])(2700|3000|4000|6000)(?:[^0-9]|$)/; // fallback: cualquier ocurrencia
+  var BTN_ANY = /(2700|3000|4000|6000)/; // última instancia: substring puro
   var STORE_LIMIT = 8; // máx. ancestros a revisar buscando el type del botón
+
+  // Parámetro de aislamiento: ?temp=2700 (prueba SIN consola: si al cargar
+  // con ?temp=2700 el filtro se ve, el problema es SOLO la detección de clics;
+  // si no se ve ni así, es la construcción/aplicación del filtro).
+  var URL_TEMP = (window.location.search.match(/[?&]temp=(\d{3,4})/) || [])[1] || null;
 
   // ==========================================================================
   // ESTADO
@@ -212,6 +220,8 @@
     activeTemp = key;
     var tint = hexToRgb01(p.hexNum);
     var k = p.intensity * TINT_SCALE;
+    log('FILTRO -> aplicando', key, '(' + p.label + ') k=', k.toFixed(2),
+        '| quad:', !!quad, '| originales:', Object.keys(originals).length);
 
     var changed = 0;
     var fails = 0;
@@ -271,29 +281,34 @@
 
   // ==========================================================================
   // VÍA 1 — BOTONES 3D DEL EDITOR (btn_2700 .. btn_6000)
+  // v8: matchea type O name (los nombres del modelo a veces viajan en .name);
+  // regex escalonada: anclada -> contenida con límites -> substring puro.
   // ==========================================================================
-  function keyFromType(type) {
-    if (!type || typeof type !== 'string') return null;
-    var m = type.match(BTN_ANCHORED);
+  function keyFromString(s) {
+    if (!s || typeof s !== 'string') return null;
+    var m = s.match(BTN_ANCHORED);
     if (m) return m[1];
-    m = type.match(BTN_LOOSE);
+    m = s.match(BTN_LOOSE);
+    if (m) return m[1];
+    m = s.match(BTN_ANY);
     return m ? m[1] : null;
   }
 
   function findBtnKey(node) {
     var cur = node, hops = 0;
-    var chain = [];
+    var chainT = [], chainN = [];
     while (cur && hops < STORE_LIMIT) {
-      chain.push(cur.type || '∅');
-      var key = keyFromType(cur.type);   // propiedad documentada: node.type
+      chainT.push(cur.type || '∅');
+      chainN.push(cur.name || '∅');
+      var key = keyFromString(cur.type) || keyFromString(cur.name);
       if (key) return key;
       if (cur.parent) cur = cur.parent;  // propiedad documentada: node.parent
       else break;
       hops++;
     }
-    // DIAGNÓSTICO: si el clic NO fue un botón de temperatura, la cadena ayuda
-    // a ver qué types recorre el findBtnKey (para detectar botones mal nombrados).
-    log('findBtnKey -> sin key; tipos visitados:', chain.join(' | '));
+    // DIAGNÓSTICO: si el clic NO fue un botón de temperatura, la cadena type/name
+    // muestra exactamente qué nombra el modelo (para saber cómo renombrar).
+    log('findBtnKey -> sin key | types:', chainT.join(' | '), '| names:', chainN.join(' | '));
     return null;
   }
 
@@ -306,7 +321,7 @@
       if (!node) return;
       var key = findBtnKey(node);
       if (key) {
-        log('botón de temperatura 3D detectado ->', key, '| (aplicando)');
+        log('botón de temperatura 3D detectado ->', key, '| (aplicando filtro)');
         applyTemp(key);
         return true; // click de temperatura: no toca intensidades
       }
@@ -629,13 +644,23 @@
     // v7: construir la UI VR de temperatura AL ENTRAR al casco:
     //  - Capa B: quad de filtro general (equivale al overlay CSS en VR)
     //  - VÍA 3: esferas de temperatura VR (respaldo garantizado a btn_*)
-    if (!ensureScene()) {
-      warn('sin escena interna: quad de filtro y esferas VR de temperatura no construidos');
-    } else {
-      buildQuad();
-      buildTempSpheres();
+    // v8: si la escena interna aún no está lista, reintentar hasta 5 veces
+    // (el viewer puede exponerla un poco después de entrar a la sesión).
+    var tries = 0;
+    function tryBuild() {
+      if (!xrSession) return;
+      if (ensureScene()) {
+        buildQuad();
+        buildTempSpheres();
+        log('UI de temperatura VR construida');
+      } else if (tries++ < 5) {
+        setTimeout(tryBuild, 500);
+      } else {
+        warn('UI VR de temperatura NO construida (escena interna no encontrada)');
+      }
     }
-    log('sesión XR detectada; UI de temperatura VR construida/verificada');
+    tryBuild();
+    log('sesión XR detectada; construyendo UI de temperatura VR');
   }
 
   function ensureScene() {
@@ -777,6 +802,15 @@
         ensureReady();
       }
     }, 8000);
+
+    // PRUEBA DE AISLAMIENTO (v8): si la URL lleva ?temp=2700|3000|4000|6000,
+    // se aplica el filtro al cargar (sin tocar nada). Sirve para confirmar si
+    // el PROBLEMA es la DETECCIÓN DE CLIC (filtro se ve) o el FILTRO mismo
+    // (nada se ve, ni así).
+    if (URL_TEMP && PRESETS[URL_TEMP]) {
+      log('?temp=' + URL_TEMP + ' detectado -> aplicando filtro de aislamiento');
+      applyTemp(URL_TEMP);
+    }
 
     watchXR();
   }
