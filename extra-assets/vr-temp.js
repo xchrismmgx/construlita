@@ -1,6 +1,6 @@
-/**
+﻿/**
  * ============================================================================
- *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v15
+ *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v17
  * ============================================================================
  *  v9 (filtro "lentes de color", SIN tinte de materiales):
  *   - Se ELIMINÓ la Capa A (tinte de baseColor de materiales): NO cambia el
@@ -20,7 +20,7 @@
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
  *  Integración (body-end.html VR-only, DESPUÉS de vr-compat.js):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=15"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=17"></script>
  * ============================================================================
  */
 (function () {
@@ -46,7 +46,7 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 15 (v15) — grip Quest + setAllMaterialsEditable agresivo');
+  log('versión 17 (v17) — X/Y mando izquierdo + grip + detección de índices');
 
   // ==========================================================================
   // PRESETS — PALETA CALIBRADA del body-end de ejemplo (.temp-btn):
@@ -632,9 +632,50 @@
     }
   }
 
+  // v17: POLLING DE BOTONES X/Y (mando izquierdo) en cada frame XR.
+  //   X (buttons[4]) -> siguiente temperatura | Y (buttons[5]) -> anterior.
+  // Detecta flancos de subida (press nuevo) y registra el índice real de cada
+  // botón pulsado (primeras 12 veces) para validar el mapeo en tu hardware.
+  var prevButtons = {};   // handedness -> {indice: pressed}
+  var btnLogCount = 0;
+  var X_BTN = 4, Y_BTN = 5; // índices estándar WebXR (ajustables por evidencia)
+
+  function pollGamepadButtons() {
+    var sources = xrSession.inputSources || [];
+    for (var i = 0; i < sources.length; i++) {
+      var src = sources[i];
+      if (!src || !src.gamepad) continue;
+      var hand = src.handedness || 'unknown';
+      var btns = src.gamepad.buttons || [];
+      var prev = prevButtons[hand] || {};
+      for (var bi = 0; bi < btns.length; bi++) {
+        var pressed = !!(btns[bi] && btns[bi].pressed);
+        if (pressed && !prev[bi]) {
+          if (btnLogCount < 12) {
+            btnLogCount++;
+            log('BOTON detectado -> mano:', hand, '| índice:', bi);
+          }
+          if (hand === 'left') {
+            if (bi === X_BTN) { cycleTemp(1); }
+            else if (bi === Y_BTN) { cycleTemp(-1); }
+          }
+        }
+      }
+      var next = {};
+      for (var b2 = 0; b2 < btns.length; b2++) next[b2] = !!(btns[b2] && btns[b2].pressed);
+      prevButtons[hand] = next;
+    }
+  }
+
   function xrTick(time, frame) {
     if (!xrSession) return;
     try {
+      // v17: BOTONES X/Y del mando IZQUIERDO -> ciclo de temperatura.
+      // X = buttons[4] -> siguiente | Y = buttons[5] -> anterior.
+      // (Mapeo estándar WebXR; si en tu mando fueran otros índices, el log
+      //  'BOTON detectado -> índice: N' lo revela y ajustamos las constantes.)
+      pollGamepadButtons();
+
       var pose = frame && xrRefSpace ? frame.getViewerPose(xrRefSpace) : null;
       var head = null;
       if (pose && pose.views && pose.views.length) {
@@ -729,7 +770,13 @@
 
     xrSession.addEventListener('selectstart', onSelectStart);
     xrSession.addEventListener('squeezestart', onSqueezeStart); // v15: grip Quest
+    xrSession.addEventListener('squeeze', onSqueezeStart);      // v16: variante de evento
     xrSession.requestAnimationFrame(xrTick);
+
+    // v16: confirmación de entrada a VR + mandos detectados.
+    var srcs = (xrSession.inputSources || []);
+    log('SESION VR ACTIVA ✓ — mandos detectados:', srcs.length,
+        srcs.map(function (s) { return s.handedness || '?'; }).join('+'));
 
     // v7: construir la UI VR de temperatura AL ENTRAR al casco:
     //  - Capa B: quad de filtro general (equivale al overlay CSS en VR)
@@ -788,9 +835,17 @@
   //   grip DERECHO -> siguiente temperatura (2700→3000→4000→6000→6500→2700…)
   //   grip IZQUIERDO -> anterior.
   // Ya no depende de botones 3D en el editor.
+  var lastSqueezeTs = 0;
+
   function onSqueezeStart(ev) {
     if (!xrSession) return;
+    // v16: debounce — squeezestart y squeeze pueden dispararse ambos por
+    // una sola presión del grip; ignoramos el segundo si llega < 350 ms.
+    var now = Date.now();
+    if (now - lastSqueezeTs < 350) return;
+    lastSqueezeTs = now;
     var hand = ev && ev.inputSource && ev.inputSource.handedness;
+    log('SQUEEZE (grip) recibido -> mano:', hand || 'desconocida');
     var dir = (hand === 'left') ? -1 : 1; // default: siguiente
     cycleTemp(dir);
   }
