@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ============================================================================
  *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v15
  * ============================================================================
@@ -46,7 +46,7 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 14 (v14)');
+  log('versión 15 (v15) — grip Quest + setAllMaterialsEditable agresivo');
 
   // ==========================================================================
   // PRESETS — PALETA CALIBRADA del body-end de ejemplo (.temp-btn):
