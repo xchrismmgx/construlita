@@ -1,6 +1,6 @@
-/**
+﻿/**
  * ============================================================================
- *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v9
+ *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v11
  * ============================================================================
  *  v9 (filtro "lentes de color", SIN tinte de materiales):
  *   - Se ELIMINÓ la Capa A (tinte de baseColor de materiales): NO cambia el
@@ -20,7 +20,7 @@
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
  *  Integración (body-end.html VR-only, DESPUÉS de vr-compat.js):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=9"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=11"></script>
  * ============================================================================
  */
 (function () {
@@ -165,18 +165,120 @@
     };
   }
 
+  // ==========================================================================
+  // FILTRO POR SHADER-INJECTION (v11 — mecanismo PRINCIPAL del filtro).
+  // No requiere la escena interna (que en tu publicación no se encontró):
+  // parchea onBeforeCompile de los materiales editables (API verificada
+  // getEditableMaterials) e inyecta al final del fragment shader:
+  //   gl_FragColor.rgb *= uVRTEMP_FilterColor
+  // => multiplica el color FINAL de cada píxel (ledo/lente real):
+  //   - tiñe TODA la imagen (incl. haces de luz rebotando),
+  //   - NO cambia texturas ni baseColor (catálogo IES realista),
+  //   - funciona en ambos ojos, sin postproceso ni escena interna.
+  // Basado en la técnica LUTVR de tu export de chat (msj 7).
+  // ==========================================================================
+  var FILTER_UNIFORMS = [];      // {mat, uniforms} activos
+  var FILTER_PATCHED = false;
+  var FILTER_PATCH_COUNT = 0;
+
+  function patchMaterialsFilter() {
+    if (FILTER_PATCHED) return;
+    FILTER_PATCHED = true;
+    var mats = [];
+    try {
+      if (viewer && typeof viewer.getEditableMaterials === 'function') mats = viewer.getEditableMaterials() || [];
+      else { warn('getEditableMaterials no disponible; filtro shader NO aplicado'); return; }
+    } catch (e) { warn('getEditableMaterials error:', e); return; }
+
+    for (var i = 0; i < mats.length; i++) {
+      var m = mats[i];
+      if (!m || typeof m.onBeforeCompile !== 'function') continue;
+      if (m.__vrtempPatched) continue;
+      m.__vrtempPatched = true;
+
+      var prevOnBeforeCompile = m.onBeforeCompile;
+      m.onBeforeCompile = function (shader, renderer) {
+        if (typeof prevOnBeforeCompile === 'function') {
+          try { prevOnBeforeCompile.call(this, shader, renderer); } catch (e) {}
+        }
+        if (!shader.uniforms.uVRTEMP_FilterColor) {
+          shader.uniforms.uVRTEMP_FilterColor = { value: { r: 1, g: 1, b: 1 } };
+          // Declaración del uniform al inicio del fragment shader.
+          var header = 'uniform vec3 uVRTEMP_FilterColor;\n';
+          shader.fragmentShader = header + shader.fragmentShader;
+          // Multiplicación al final del pipeline de color (patrón LUTVR).
+          var body = 'gl_FragColor.rgb *= uVRTEMP_FilterColor;\n';
+          if (shader.fragmentShader.indexOf('#include <dithering_fragment>') !== -1) {
+            shader.fragmentShader = shader.fragmentShader.replace(
+              '#include <dithering_fragment>',
+              '#include <dithering_fragment>\n' + body);
+          } else if (shader.fragmentShader.indexOf('#include <opaque_fragment>') !== -1) {
+            shader.fragmentShader = shader.fragmentShader.replace(
+              '#include <opaque_fragment>',
+              '#include <opaque_fragment>\n' + body);
+          } else {
+            var li = shader.fragmentShader.lastIndexOf('}');
+            if (li !== -1) {
+              shader.fragmentShader = shader.fragmentShader.slice(0, li) + body + '\n' + shader.fragmentShader.slice(li);
+            }
+          }
+        }
+        // Dedupe: onBeforeCompile puede ejecutarse varias veces por material.
+        var already = false;
+        for (var ui = 0; ui < FILTER_UNIFORMS.length; ui++) {
+          if (FILTER_UNIFORMS[ui].uniforms === shader.uniforms) { already = true; break; }
+        }
+        if (!already) FILTER_UNIFORMS.push({ mat: this, uniforms: shader.uniforms });
+      };
+      try { m.needsUpdate = true; } catch (e) {}
+      FILTER_PATCH_COUNT++;
+    }
+    log('filtro shader-injection preparado en', FILTER_PATCH_COUNT, 'materiales');
+  }
+
+  function updateFilterUniforms(c) {
+    for (var i = 0; i < FILTER_UNIFORMS.length; i++) {
+      try {
+        var u = FILTER_UNIFORMS[i].uniforms.uVRTEMP_FilterColor;
+        if (u) { u.value.r = c.r; u.value.g = c.g; u.value.b = c.b; }
+      } catch (e) { /* material liberado */ }
+    }
+  }
+
   function applyTemp(key) {
     key = String(key);
     var p = PRESETS[key];
     if (!p) { warn('preset desconocido:', key); return; }
     activeTemp = key;
+
+    // v11: filtro SHADER (principal, sin escena interna).
+    patchMaterialsFilter();
+    var fh = p.filterHex || p.hexNum;   // 4000K: blanco = neutro
+    var c = lerpWhiteTo(fh, p.k);
+    updateFilterUniforms(c);
+    // Refuerzo opcional: quad per-eye solo si la escena interna existe.
+    ensureFilterReady();
+    if (quad) updateQuad(p);
+
     log('FILTRO -> aplicando', key, '(' + p.label + ') k=', p.k,
-        '| quad:', !!quad, '| modo: multiplicativo (sin tinte de materiales)');
+        '| shader:', FILTER_PATCH_COUNT, 'mat | quad:', !!quad,
+        '| color:', c.r.toFixed(3), c.g.toFixed(3), c.b.toFixed(3));
     try { viewer.requestFrame(); } catch (e) { /* no crítico */ }
     updateDomActive(key);
     persist(key);
-    updateQuad(p);
     vrFeedback();
+  }
+
+  // v10/v11: garantiza el quad del filtro como REFUERZO (solo si la escena
+  // interna existe). El mecanismo principal es el shader, que no la necesita.
+  function ensureFilterReady() {
+    if (quad) return;
+    if (!xrSession) {
+      log('filtro: sin sesión XR activa -> refuerzo quad solo DENTRO del casco (shader sí aplica)');
+      return;
+    }
+    if (ensureScene()) { buildQuad(); }
+    else { log('filtro: escena interna no disponible; usando SOLO shader-injection'); }
   }
 
   function resetTemp() { applyTemp('4000'); } // 4000K = neutro (filtro blanco) = originales
@@ -582,9 +684,11 @@
   function ensureScene() {
     if (xrScene) return true;
     if (!viewer) return false;
-    xrScene = deepFind(viewer, 4);
+    // v10: profundidad 8 (antes 4) para localizar la escena interna en
+    // arquitecturas de viewer más anidadas.
+    xrScene = deepFind(viewer, 8);
     if (!xrScene) warn('ensureScene -> escena interna NO encontrada (UI VR de temperatura desactivada)');
-    else log('ensureScene -> escena interna encontrada');
+    else log('ensureScene -> escena interna encontrada (depth>=5)');
     return !!xrScene;
   }
 
