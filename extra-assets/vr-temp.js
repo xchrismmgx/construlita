@@ -1,44 +1,53 @@
-﻿/**
+/**
  * ============================================================================
- *  VR-TEMP para Shapespark — Temperatura de color GLOBAL (WebXR + desktop)
+ *  VR-TEMP para Shapespark — Temperatura de color GLOBAL (WebXR) — v6
  * ============================================================================
  *  4 presets: 2700K / 3000K / 4000K (neutro = original) / 6000K.
  *
- *  Activación (tres vías, simultáneas):
+ *  v6 (VR-only + fix de carga en Quest):
+ *   - deepFind con guarda de ciclos (visited) y tope de nodos: evita el
+ *     bloqueo del hilo principal durante la carga (causa del bucle de
+ *     carga/inicio en el Quest).
+ *   - Trabajo pesado DIFERIDO: storeOriginals/ensureScene ya no se ejecutan
+ *     en onSceneReadyToDisplay; se corren en onSceneLoadComplete o en el
+ *     primer clic del usuario (requestIdleCallback/setTimeout).
+ *   - Sin restoreSaved() automático al arrancar (no se tiñen 149 materiales
+ *     en el primer frame).
+ *   - Interruptor ?vrtemp=off (prueba A/B).
+ *   - Logs reenviados al panel ?diag=1 de vr-compat.js (VRCOMPAT.diag).
+ *
+ *  Activación:
  *   1) Botones 3D del editor con Type = btn_2700 | btn_3000 | btn_4000 | btn_6000
- *      -> viewer.onNodeTypeClicked (SÓLO temperatura; el manejo de esferas de
- *      intensidad/switchToView es ÚNICO de vr-compat.js para evitar el doble
- *      disparo verificado en consola).
- *   2) Botones DOM .temp-btn (desktop) -> reemplaza SOLO su onclick anterior
- *      (el overlay CSS). Sliders de intensidad y .reset-btn de zonas: intactos.
- *   3) Fallback VR: 4 esferas 3D auto-generadas SOLO dentro del casco
- *      (segunda fila, debajo de las esferas de intensidad de vr-compat).
- *
- *  Efecto (engine-side, visible en VR):
- *   - Capa A (primaria): lerp de Material.baseColor de TODOS los materiales
- *     editables hacia el color del preset + viewer.requestFrame().
- *     4000K = intensidad 0 = restaurar colores originales.
- *   - Capa B (solo XR): quad translúcido anclado a la cabeza, opacidad baja.
- *
- *  GARANTÍAS (no afectar intensidades):
- *   - NO modifica vr-compat.js, ZONES_CONFIG, sliders, exposure, gamma,
- *     cameraVolumes ni viewer.switchToView.
- *   - Usa SUS PROPIOS oyentes de sesión XR (sessionstart/selectstart) y SU PROPIO
- *     requestAnimationFrame; múltiples callbacks por sesión son válidos en WebXR.
- *   - La temperatura es global y PERSISTE entre cambios de vista/intensidad.
+ *      -> dispatcher único de vr-compat.js (VRCOMPAT.onNodeClick).
+ *   2) (Opcional) botones DOM .temp-btn si existieran (build desktop sin UI).
+ *   3) Fallback VR: 4 esferas 3D auto-generadas SOLO dentro del casco.
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
  *  Integración (body-end.html, DESPUÉS de vr-compat.js):
- *    <script src="extra-assets/vr-temp.js?v=5"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=6"></script>
  * ============================================================================
  */
 (function () {
   'use strict';
 
+  // INTERRUPTOR DE DIAGNÓSTICO: ?vrtemp=off desactiva TODO el módulo.
+  if (/[?&]vrtemp=off/.test(window.location.search)) {
+    console.log('[VRTEMP] DESACTIVADO por ?vrtemp=off (diagnóstico A/B)');
+    return;
+  }
+
   var TAG = '[VRTEMP]';
 
-  function log() { console.log.apply(console, [TAG].concat(Array.prototype.slice.call(arguments))); }
-  function warn() { console.warn.apply(console, [TAG].concat(Array.prototype.slice.call(arguments))); }
+  function log() {
+    var args = Array.prototype.slice.call(arguments);
+    console.log.apply(console, [TAG].concat(args));
+    if (window.VRCOMPAT && window.VRCOMPAT.diag) window.VRCOMPAT.diag(args.join(' '));
+  }
+  function warn() {
+    var args = Array.prototype.slice.call(arguments);
+    console.warn.apply(console, [TAG].concat(args));
+    if (window.VRCOMPAT && window.VRCOMPAT.diag) window.VRCOMPAT.diag('⚠ ' + args.join(' '));
+  }
 
   // ==========================================================================
   // PRESETS (paleta derivada de script (2).js:123-128, afinada para global)
@@ -103,22 +112,35 @@
   }
 
   // Búsqueda profunda del objeto escena por feature detection (misma técnica
-  // que vr-compat.js:149-153; NO importa el THREE del viewer, solo busca).
-  function deepFind(root, match, depth) {
-    if (depth > 4 || root == null) return null;
-    var keys;
-    try { keys = Object.keys(root); } catch (e) { return null; }
-    for (var i = 0; i < keys.length; i++) {
-      var v;
-      try { v = root[keys[i]]; } catch (e) { continue; }
-      if (!v) continue;
-      if (typeof v === 'object') {
-        try {
-          if (v.isScene === true || v.isScene === 1) return v;
-        } catch (e) { /* sin getter */ }
-        var found = deepFind(v, match, depth + 1);
-        if (found) return found;
+  // que vr-compat.js; NO importa el THREE del viewer, solo busca).
+  // v6: guarda de ciclos (visited) + tope de nodos. La versión anterior
+  // (sin visited) recorría el grafo completo del viewer de forma explosiva y
+  // bloqueaba el hilo principal durante la carga (bucle de carga en Quest).
+  var DEEP_FIND_LIMIT = 30000; // tope de seguridad de nodos visitados
+
+  function deepFind(root, maxDepth) {
+    var visited = new Set();
+    var visits = 0;
+    var stack = [{ obj: root, depth: 0 }];
+    while (stack.length && visits < DEEP_FIND_LIMIT) {
+      var item = stack.pop();
+      visits++;
+      var node = item.obj;
+      if (!node || typeof node !== 'object') continue;
+      if (item.depth > (maxDepth == null ? 4 : maxDepth)) continue;
+      if (visited.has(node)) continue;
+      visited.add(node);
+      try { if (node.isScene === true || node.isScene === 1) return node; } catch (e) { /* sin getter */ }
+      var keys;
+      try { keys = Object.keys(node); } catch (e) { continue; }
+      for (var i = 0; i < keys.length; i++) {
+        var v;
+        try { v = node[keys[i]]; } catch (e) { continue; }
+        if (v && typeof v === 'object') stack.push({ obj: v, depth: item.depth + 1 });
       }
+    }
+    if (visits >= DEEP_FIND_LIMIT) {
+      warn('deepFind: alcanzado tope de ' + DEEP_FIND_LIMIT + ' nodos sin encontrar la escena');
     }
     return null;
   }
@@ -161,10 +183,15 @@
     }
 
     if (pendingTemp) {
+      // Temp pedida por el usuario antes de que se guardaran los originales:
+      // se aplica ahora (comportamiento por clic, no automático).
       var k = pendingTemp; pendingTemp = null;
       applyTemp(k);
     } else {
-      restoreSaved();
+      // v6: NO se restaura la temperatura guardada en localStorage al
+      // arrancar (evita el tinte de 149 materiales en el primer frame,
+      // que retrasaba/bloqueaba la carga del showroom).
+      log('storeOriginals -> sin restauración automática de temperatura al arrancar');
     }
   }
 
@@ -172,6 +199,10 @@
     key = String(key);
     var p = PRESETS[key];
     if (!p) { warn('preset desconocido:', key); return; }
+
+    // v6: asegura que el trabajo pesado (guardar originales) se programe
+    // (diferido) en cuanto haya interacción del usuario.
+    ensureReady();
 
     if (!originalsSaved) { pendingTemp = key; log('escena aún no lista; temp en cola:', key); return; }
     if (!getTHREE()) { warn('THREE no disponible aún'); return; }
@@ -234,35 +265,6 @@
 
   function persist(key) {
     try { localStorage.setItem(STORAGE_KEY, key); } catch (e) { /* privado */ }
-  }
-
-  function restoreSaved() {
-    var k = null;
-    try { k = localStorage.getItem(STORAGE_KEY); } catch (e) {}
-    if (k && PRESETS[k]) { log('restaurando temp guardada:', k); applyTemp(k); }
-  }
-
-  // ==========================================================================
-  // VÍA 1 — BOTONES 3D DEL EDITOR (btn_2700 .. btn_6000)
-  // ==========================================================================
-  function keyFromType(type) {
-    if (!type || typeof type !== 'string') return null;
-    var m = type.match(BTN_ANCHORED);
-    if (m) return m[1];
-    m = type.match(BTN_LOOSE);
-    return m ? m[1] : null;
-  }
-
-  function findBtnKey(node) {
-    var cur = node, hops = 0;
-    while (cur && hops < STORE_LIMIT) {
-      var key = keyFromType(cur.type);   // propiedad documentada: node.type
-      if (key) return key;
-      if (cur.parent) cur = cur.parent;  // propiedad documentada: node.parent
-      else break;
-      hops++;
-    }
-    return null;
   }
 
   // ==========================================================================
@@ -333,8 +335,8 @@
 
     var btns = document.querySelectorAll('.temp-btn');
     if (btns.length === 0) {
-      warn('wireDomButtons -> 0 botones .temp-btn en el DOM: los botones de ' +
-           'temperatura de desktop NO funcionarán (¿el body-end no tiene los paneles?)');
+      // Build VR-only: sin interfaz 2D no existen .temp-btn; es lo esperado.
+      log('wireDomButtons -> 0 botones .temp-btn (build VR-only, sin interfaz 2D)');
     }
     for (var i = 0; i < btns.length; i++) {
       (function (btn) {
@@ -617,7 +619,9 @@
   function ensureScene() {
     if (xrScene) return true;
     if (!viewer) return false;
-    xrScene = deepFind(viewer, null, 0);
+    xrScene = deepFind(viewer, 4);
+    if (!xrScene) warn('ensureScene -> escena interna NO encontrada (UI VR de temperatura desactivada)');
+    else log('ensureScene -> escena interna encontrada');
     return !!xrScene;
   }
 
@@ -687,6 +691,32 @@
   }
 
   // ==========================================================================
+  // TRABAJO PESADO DIFERIDO (v6: fix de carga en Quest).
+  // storeOriginals (clonar 149 materiales) y ensureScene (deepFind) NO se
+  // ejecutan durante onSceneReadyToDisplay: se programan para cuando el
+  // navegador esté libre (requestIdleCallback / setTimeout 0) o, como
+  // máximo, en onSceneLoadComplete. Así el primer frame se pinta sin
+  // bloqueos y la carga del showroom no se congela.
+  // ==========================================================================
+  var heavyScheduled = false;
+
+  function ensureReady() {
+    if (heavyScheduled) return;
+    heavyScheduled = true;
+    log('trabajo pesado programado (diferido: storeOriginals + ensureScene)');
+    if (typeof window.requestIdleCallback === 'function') {
+      requestIdleCallback(runHeavy, { timeout: 2000 });
+    } else {
+      setTimeout(runHeavy, 0);
+    }
+  }
+
+  function runHeavy() {
+    try { storeOriginals(); } catch (e) { warn('storeOriginals error:', e); }
+    try { ensureScene(); } catch (e) { warn('ensureScene error:', e); }
+  }
+
+  // ==========================================================================
   // INIT
   // ==========================================================================
   function init() {
@@ -703,21 +733,26 @@
 
     try {
       viewer.onSceneReadyToDisplay(function () {
-        storeOriginals();
-        ensureScene();
+        // v6: SOLO trabajo ligero aquí (registro de oyentes).
+        // El clonado de materiales y la búsqueda de escena se difieren.
         wireDomButtons();
         wireEditorButtons();
       });
     } catch (e) { warn('onSceneReadyToDisplay:', e); }
 
-    // Fallback si onSceneReadyToDisplay no dispara (escena ya cargada)
+    try {
+      viewer.onSceneLoadComplete(function () {
+        log('onSceneLoadComplete -> programando trabajo diferido');
+        ensureReady();
+      });
+    } catch (e) { warn('onSceneLoadComplete:', e); }
+
+    // Fallback si ni onSceneReadyToDisplay ni onSceneLoadComplete disparan:
+    // se programa igualmente el trabajo pesado (arranque tardío).
     setTimeout(function () {
       if (!originalsSaved) {
-        log('fallback: guardando originales por timeout');
-        storeOriginals();
-        ensureScene();
-        wireDomButtons();
-        wireEditorButtons();
+        log('fallback 8s: programando trabajo diferido');
+        ensureReady();
       }
     }, 8000);
 

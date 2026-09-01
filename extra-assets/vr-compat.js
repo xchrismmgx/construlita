@@ -1,32 +1,86 @@
-﻿/**
+/**
  * ============================================================================
- *  VR-COMPAT para Shapespark — WebXR (Meta Quest 2/3/Pro)
+ *  VR-COMPAT para Shapespark — WebXR (Meta Quest 2/3/Pro) — v10 VR-only
  * ============================================================================
  *  En VR genera ESFERAS 3D propias (no dependen de extensiones del editor)
  *  que CAMBIAN DE VISTA/INTENSIDAD al clicar:
  *    - Una esfera por cada intensidad de la ZONA ACTIVA (10%,40%,60%,80%,100%)
  *      -> viewer.switchToView(nombreDeVista, 0)  (0 = instantáneo).
- *  La temperatura (tinte/LUT) queda del lado del Material Picker nativo de
- *  Shapespark, cuyas esferas son 3D y también visibles en VR.
+ *  También cablea las ESFERAS CREADAS EN EL EDITOR (Camino A): type/name del
+ *  nodo = nombre de vista (con normalizeId para tolerar sufijos de C4D).
+ *  La temperatura la gestiona vr-temp.js (botones 3D btn_* + dispatcher).
  *
- *  Principios:
- *   - NO toca desktop/móvil: solo se activa en sesión XR ('sessionstart').
- *   - API verificada: WALK.getViewer(), viewer.switchToView(name,0),
- *     viewer.onSceneReadyToDisplay(), viewer.onViewSwitchDone().
- *   - La escena Three.js interna se obtiene por feature detection; si no
- *     aparece, se degrada con diagnóstico (sin romper nada).
+ *  v10 (VR-only + diagnóstico):
+ *   - Interruptor ?vrcompat=off (prueba A/B: desactiva todo el módulo).
+ *   - Panel de log EN PANTALLA con ?diag=1 (DOM flotante, visible en la
+ *     pantalla de inicio/carga del Quest, donde no hay consola).
+ *   - Expone VRCOMPAT.diag(txt) para que vr-temp.js muestre sus logs ahí.
  *
- *  Integración (body-end.html, DESPUÉS del script principal):
- *    <script src="extra-assets/vr-compat.js?v=5"></script>
+ *  API verificada: WALK.getViewer(), viewer.switchToView(name,0),
+ *  viewer.onSceneReadyToDisplay(), viewer.onViewSwitchDone(),
+ *  viewer.getCameraPosition() (position-lock).
+ *
+ *  Integración (body-end.html VR-only):
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-compat.js?v=10"></script>
  * ============================================================================
  */
 (function () {
   'use strict';
 
-  var TAG = '[VR-COMPAT]';
+  // INTERRUPTOR DE DIAGNÓSTICO: ?vrcompat=off desactiva TODO el módulo.
+  if (/[?&]vrcompat=off/.test(window.location.search)) {
+    console.log('[VR-COMPAT] DESACTIVADO por ?vrcompat=off (diagnóstico A/B)');
+    return;
+  }
 
-  function log() { console.log.apply(console, [TAG].concat(Array.prototype.slice.call(arguments))); }
-  function warn() { console.warn.apply(console, [TAG].concat(Array.prototype.slice.call(arguments))); }
+  var TAG = '[VR-COMPAT]';
+  var DIAG_MODE = /[?&]diag=1/.test(window.location.search);
+
+  // ---------- Panel de diagnóstico en pantalla (Quest sin consola) ----------
+  var diagEl = null;
+  var diagBuf = [];
+
+  function diagPush(txt) {
+    if (!DIAG_MODE) return;
+    diagBuf.push(String(txt));
+    if (diagBuf.length > 60) diagBuf.shift();
+    if (!diagEl) {
+      // Crea el panel la primera vez que hay cuerpo disponible.
+      if (!document.body) return;
+      diagEl = document.createElement('div');
+      diagEl.style.cssText = 'position:fixed;top:6px;left:6px;max-width:70vw;' +
+        'max-height:40vh;overflow:auto;background:rgba(15,17,22,0.92);color:#9fe8a0;' +
+        'font:11px/1.45 monospace;padding:8px 10px;border:1px solid #3a7d3a;' +
+        'border-radius:6px;z-index:2147483647;pointer-events:none;white-space:pre-wrap;';
+      document.body.appendChild(diagEl);
+    }
+    diagEl.textContent = diagBuf.join('\n');
+  }
+
+  if (DIAG_MODE && !document.body) {
+    document.addEventListener('DOMContentLoaded', function () { diagPush('panel diag listo'); });
+  }
+
+  function log() {
+    var args = Array.prototype.slice.call(arguments);
+    console.log.apply(console, [TAG].concat(args));
+    diagPush(args.join(' '));
+  }
+  function warn() {
+    var args = Array.prototype.slice.call(arguments);
+    console.warn.apply(console, [TAG].concat(args));
+    diagPush('⚠ ' + args.join(' '));
+  }
+
+  if (DIAG_MODE) {
+    window.addEventListener('error', function (e) {
+      diagPush('ERROR: ' + (e.message || e.type) + (e.filename ? ' @ ' + e.filename.split('/').pop() + ':' + e.lineno : ''));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e && e.reason;
+      diagPush('PROMESA: ' + (r && r.message ? r.message : r));
+    });
+  }
 
   // ==========================================================================
   // CONFIGURACIÓN (duplicada de script.js; mantener sincronizada).
@@ -164,16 +218,30 @@
     if (typeof cb === 'function') clickHandlers.push(cb);
   }
 
-  // Encuentra la vista de intensidad del nodo (propio + ancestros).
+  // Normaliza ids de nodos que llegan alterados del modelo 3D (C4D añade
+  // sufijos en duplicados): 'deco_g_80_' -> 'deco_g_80', 'deco_g_10_0' ->
+  // 'deco_g_10', 'Mesh (1)' -> 'Mesh'. Conserva los nombres 'sala_10' etc.
+  function normalizeId(id) {
+    if (!id) return null;
+    var s = String(id).trim();
+    s = s.replace(/\s*\(\d+\)\s*$/, ''); // sufijo numerado de duplicado
+    s = s.replace(/_0$/, '');             // sufijo '_0' de copia C4D
+    s = s.replace(/_$/, '');              // guión bajo colgante
+    return s || null;
+  }
+
+  // Encuentra la vista de intensidad del nodo (propio + ancestros, normalizados).
   function findIntensityView(node) {
     var cur = node, found = null;
     for (var depth = 0; cur && depth < 8; depth++) {
-      var id = cur.type || cur.name || null;
+      var id = normalizeId(cur.type) || normalizeId(cur.name) || null;
       if (id && INTENSITY_VIEWS[id]) { found = id; break; }
       cur = cur.parent || null;
     }
     return found;
   }
+
+  var INTENSITY_MATCHES = 0; // contador de matches (debug)
 
   // ==========================================================================
   // ESFERAS CREADAS EN EL EDITOR (Camino A).
@@ -192,18 +260,21 @@
 
       // DIAGNÓSTICO: cadena completa type/name del nodo y sus ancestros
       // (para saber exactamente qué se clicó y por qué coincide o no).
-      var chainTypes = [], chainNames = [], cur = node;
+      var chainTypes = [], chainNames = [], chainNorm = [], cur = node;
       for (var cDepth = 0; cur && cDepth < 8; cDepth++) {
         chainTypes.push(cur.type || '∅');
         chainNames.push(cur.name || '∅');
+        chainNorm.push(normalizeId(cur.type) || normalizeId(cur.name) || '∅');
         cur = cur.parent || null;
       }
       log('click 3D -> types:', chainTypes.join(' | '), '| names:', chainNames.join(' | '));
+      log('click 3D -> normalizado:', chainNorm.join(' | '));
 
       // 1) Esferas de intensidad (este módulo)
       var found = findIntensityView(node);
       if (found) {
-        log('Esfera de intensidad MATCH -> vista:', found);
+        INTENSITY_MATCHES++;
+        log('Esfera de intensidad MATCH -> vista:', found, '(total matches:', INTENSITY_MATCHES + ')');
         try {
           viewer.switchToView(found, 0);
           log('switchToView OK:', found);
@@ -428,32 +499,82 @@
   }
 
   // ==========================================================================
-  // BLOQUEO DE VISTA (mitigación desktop).
-  // El clic nativo en el modelo también dispara el "caminar hacia el punto
-  // clicado" del viewer; tras nuestro teleport la cámara sigue avanzando hacia
-  // la esfera. NO existe API documentada para cancelar esa navegación, así que
-  // re-afirmamos switchToView(v, 0) unas fracciones después para devolver la
-  // cámara a la vista (la navegación nativa termina en ~1.2-2s).
+  // BLOQUEO DE VISTA POR POSICIÓN (mitigación desktop v2).
+  // El clic nativo en el modelo dispara el "caminar hacia el punto clicado"
+  // del viewer; nuestro teleport (maxTime=0) es instantáneo pero esa
+  // navegación continúa. NO existe API documentada para cancelarla, así que
+  // en vez de re-teleportar a tiempos fijos, MONITOREAMOS la posición real de
+  // la cámara (Viewer.getCameraPosition, API verificada) y si se aleja del
+  // punto de la vista > UMBRAL, re-teleportamos al instante (cada ~60 ms).
+  // Resultado: el desplazamiento visible se reduce a <100 ms (imperceptible).
   // En sesión XR no se aplica (no hay click-to-move de ratón).
-  // NOTA HONESTA: es una mitigación pragmática, no una cancelación real.
+  // NOTA HONESTA: mitigación pragmática, no cancelación real de la navegación.
   // ==========================================================================
-  var viewLockTimers = [];
+  var LOCK_UMBRAL = 0.2;    // m de desvío permitido antes de re-teleportar
+  var LOCK_MAX_MS = 2500;   // ventana máxima del lock tras el clic
+  var LOCK_INTERVAL = 60;   // ms entre comprobaciones
+  var viewLockTimer = null;
+  var viewLockTarget = null; // {x,y,z} posición de la vista tras teleport
+  var viewLockName = null;
+  var viewLockStart = 0;
+  var viewLockReasserts = 0;
+
+  function posDist(a, b) {
+    var dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
 
   function lockView(v) {
     if (xrSession) { log('lockView omitido (sesión XR activa):', v); return; }
-    log('lockView -> re-afirmando', v, 'a los 400/900/1500ms (anti click-to-move)');
+    if (!viewer || typeof viewer.getCameraPosition !== 'function') {
+      log('lockView no disponible (sin getCameraPosition) para:', v);
+      return;
+    }
     clearViewLock();
-    [400, 900, 1500].forEach(function (ms) {
-      viewLockTimers.push(setTimeout(function () {
-        try { if (viewer) viewer.switchToView(v, 0); }
-        catch (e) { warn('lockView re-afirmación FALLÓ a los', ms, 'ms:', e && e.message ? e.message : e); }
-      }, ms));
-    });
+    // Captura la posición destino justo después del teleport instantáneo.
+    try {
+      var p = viewer.getCameraPosition();
+      viewLockTarget = { x: p.x, y: p.y, z: p.z };
+    } catch (e) {
+      warn('lockView -> no se pudo leer getCameraPosition:', e);
+      return;
+    }
+    viewLockName = v;
+    viewLockStart = Date.now();
+    viewLockReasserts = 0;
+    log('lockView -> anclando vista', v, 'en', viewLockTarget.x.toFixed(2),
+        viewLockTarget.y.toFixed(2), viewLockTarget.z.toFixed(2));
+    viewLockTimer = setInterval(lockTick, LOCK_INTERVAL);
+  }
+
+  function lockTick() {
+    if (!viewer || !viewLockTarget) { clearViewLock(); return; }
+    var elapsed = Date.now() - viewLockStart;
+    if (elapsed > LOCK_MAX_MS) {
+      log('lockView -> finalizado tras', elapsed, 'ms (', viewLockReasserts, 're-teleports)');
+      clearViewLock();
+      return;
+    }
+    var p = null;
+    try { p = viewer.getCameraPosition(); } catch (e) { return; }
+    if (!p) return;
+    var d = posDist(p, viewLockTarget);
+    if (d > LOCK_UMBRAL) {
+      viewLockReasserts++;
+      log('lockView -> desviado', d.toFixed(3), 'm; re-teleport a', viewLockName);
+      try {
+        viewer.switchToView(viewLockName, 0);
+        var p2 = viewer.getCameraPosition();
+        viewLockTarget = { x: p2.x, y: p2.y, z: p2.z }; // re-ancla al nuevo destino
+      } catch (e) {
+        warn('lockView re-teleport FALLÓ:', e && e.message ? e.message : e);
+      }
+    }
   }
 
   function clearViewLock() {
-    viewLockTimers.forEach(clearTimeout);
-    viewLockTimers = [];
+    if (viewLockTimer) { clearInterval(viewLockTimer); viewLockTimer = null; }
+    viewLockTarget = null; viewLockName = null;
   }
 
   // ==========================================================================
@@ -568,6 +689,8 @@
     // Registra un handler externo de clics 3D (usado por vr-temp.js para
     // sus botones btn_2700..btn_6000). Un solo onNodeTypeClicked compartido.
     onNodeClick: registerNodeClick,
+    // Reenvío de logs al panel de diagnóstico en pantalla (?diag=1).
+    diag: diagPush,
     labels: VRLABELS,
     sceneOffset: SCENE_OFFSET,
     forceBuild: function () { if (xrScene && !vr.ready) buildVRSpheres(); }
