@@ -1,30 +1,26 @@
-﻿/**
+/**
  * ============================================================================
- *  VR-TEMP para Shapespark — Temperatura de color GLOBAL (WebXR) — v8
+ *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v9
  * ============================================================================
- *  4 presets: 2700K / 3000K / 4000K (neutro = original) / 6000K.
- *
- *  v6 (VR-only + fix de carga en Quest):
- *   - deepFind con guarda de ciclos (visited) y tope de nodos: evita el
- *     bloqueo del hilo principal durante la carga (causa del bucle de
- *     carga/inicio en el Quest).
- *   - Trabajo pesado DIFERIDO: storeOriginals/ensureScene ya no se ejecutan
- *     en onSceneReadyToDisplay; se corren en onSceneLoadComplete o en el
- *     primer clic del usuario (requestIdleCallback/setTimeout).
- *   - Sin restoreSaved() automático al arrancar (no se tiñen 149 materiales
- *     en el primer frame).
- *   - Interruptor ?vrtemp=off (prueba A/B).
- *   - Logs reenviados al panel ?diag=1 de vr-compat.js (VRCOMPAT.diag).
- *
- *  Activación:
- *   1) Botones 3D del editor con Type = btn_2700 | btn_3000 | btn_4000 | btn_6000
- *      -> dispatcher único de vr-compat.js (VRCOMPAT.onNodeClick).
- *   2) (Opcional) botones DOM .temp-btn si existieran (build desktop sin UI).
- *   3) Fallback VR: 4 esferas 3D auto-generadas SOLO dentro del casco.
+ *  v9 (filtro "lentes de color", SIN tinte de materiales):
+ *   - Se ELIMINÓ la Capa A (tinte de baseColor de materiales): NO cambia el
+ *     color de ninguna textura/producto (catálogo de luminarias con perfiles
+ *     IES necesita el look realista).
+ *   - Capa B = filtro multiplicativo per-eye (resultado = colorEscena ×
+ *     colorFiltro), como un gel/lente real: se ve sobre TODA la imagen
+ *     (haces de luz rebotando incluidos), en ambos ojos, sin post-proceso.
+ *   - Paleta CALIBRADA del body-end de ejemplo (botones .temp-btn):
+ *     2700 #fed360 · 3000 #fce084 · 4000 #fef6c8 (≈ neutro, filtro blanco) ·
+ *     6000 #b1e3fa · 6500 #98d9f5.
+ *   - Interruptores: ?vrtemp=off (A/B), ?temp=2700… (aislamiento sin consola,
+ *     aplicación al cargar), ?diag=1 (panel en pantalla vía VRCOMPAT.diag).
+ *   - Botones 3D del editor: type/name con el número (btn_2700, temp 3000K,
+ *     "2700"…), node + ancestros; regex escalonada v8. Respaldo: 5 esferas VR
+ *     auto-generadas en el casco (2700→3000→4000→6000→6500).
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
- *  Integración (body-end.html, DESPUÉS de vr-compat.js):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=8"></script>
+ *  Integración (body-end.html VR-only, DESPUÉS de vr-compat.js):
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=9"></script>
  * ============================================================================
  */
 (function () {
@@ -50,29 +46,29 @@
   }
 
   // ==========================================================================
-  // PRESETS (paleta derivada de script (2).js:123-128, afinada para global)
-  // v7: intensidades subidas para que el tinte se vea como FILTRO GENERAL
-  // (no solo un matiz sutil) — mismo lenguaje del overlay CSS 'color' original.
+  // PRESETS — PALETA CALIBRADA del body-end de ejemplo (.temp-btn):
+  // 2700 #fed360 · 3000 #fce084 · 4000 #fef6c8 · 6000 #b1e3fa · 6500 #98d9f5
+  // k = intensidad multiplicativa (1:1 de las opacidades PC script (2).js).
+  // '4000' es el NEUTRO: el filtro usa blanco puro (sin cambiar la imagen),
+  // aunque su esfera indicadora se pinta #fef6c8 (el color del patrón).
   // ==========================================================================
   var PRESETS = {
-    '2700': { hexNum: 0xFFCC5A, css: '#FFCC5A', intensity: 0.65, label: '2700K' },
-    '3000': { hexNum: 0xFFE3A3, css: '#FFE3A3', intensity: 0.45, label: '3000K' },
-    '4000': { hexNum: 0xFFFFFF, css: '#FFFFFF', intensity: 0.00, label: '4000K' }, // neutro = original
-    '6000': { hexNum: 0xCBE9FF, css: '#CBE9FF', intensity: 0.50, label: '6000K' }
+    '2700': { hexNum: 0xFED360, css: '#fed360', k: 0.40, label: '2700K' },
+    '3000': { hexNum: 0xFCE084, css: '#fce084', k: 0.25, label: '3000K' },
+    '4000': { hexNum: 0xFEF6C8, css: '#fef6c8', filterHex: 0xFFFFFF, k: 0.50, label: '4000K' },
+    '6000': { hexNum: 0xB1E3FA, css: '#b1e3fa', k: 0.25, label: '6000K' },
+    '6500': { hexNum: 0x98D9F5, css: '#98d9f5', k: 0.20, label: '6500K' }
   };
-  var ORDER = ['2700', '3000', '4000', '6000'];
-  var TINT_SCALE = 1.0;       // v7: lerp completo (antes 0.55) -> filtro general visible
-  var QUAD_OPACITY_SCALE = 0.35; // v7: quad de color en VR más notorio (antes 0.18)
+  var ORDER = ['2700', '3000', '4000', '6000', '6500'];
   var QUAD_SIZE = 3.2;        // m a 0.62 m de la cabeza cubre ~138° por ojo
   var QUAD_DIST = 0.62;
   var STORAGE_KEY = 'vrtemp';
-  var SKIP_MATERIAL = /sky|cielo/i;   // materiales que NO se tintan
   // Botones del editor: acepta btn_2700 / boton-2700 / Btn 2700 / Luz 2700K / "2700"
   // en type O en name (v8: match tolerante para detectar cualquier botón 3D
   // que el usuario haya nombrado de forma distinta).
-  var BTN_ANCHORED = /^(?:btn|boton|botón|temperatura|temp|luz|cal)[-_ ]?(2700|3000|4000|6000)(?:K)?$/i;
-  var BTN_LOOSE = /(?:^|[^0-9])(2700|3000|4000|6000)(?:[^0-9]|$)/; // fallback: cualquier ocurrencia
-  var BTN_ANY = /(2700|3000|4000|6000)/; // última instancia: substring puro
+  var BTN_ANCHORED = /^(?:btn|boton|botón|temperatura|temp|luz|cal)[-_ ]?(2700|3000|4000|6000|6500)(?:K)?$/i;
+  var BTN_LOOSE = /(?:^|[^0-9])(2700|3000|4000|6000|6500)(?:[^0-9]|$)/; // fallback: cualquier ocurrencia
+  var BTN_ANY = /(2700|3000|4000|6000|6500)/; // última instancia: substring puro
   var STORE_LIMIT = 8; // máx. ancestros a revisar buscando el type del botón
 
   // Parámetro de aislamiento: ?temp=2700 (prueba SIN consola: si al cargar
@@ -85,9 +81,6 @@
   // ==========================================================================
   var viewer = null;
   var T3 = null;                       // window.THREE (el mismo que carga el viewer)
-  var originals = {};                  // name -> THREE.Color original
-  var originalsSaved = false;
-  var pendingTemp = null;              // temp pedida antes de guardar originales
   var activeTemp = null;
   var domWired = false;
 
@@ -113,13 +106,7 @@
     return T3;
   }
 
-  function hexToRgb01(hexNum) {
-    return {
-      r: ((hexNum >> 16) & 255) / 255,
-      g: ((hexNum >> 8) & 255) / 255,
-      b: (hexNum & 255) / 255
-    };
-  }
+  // (hexToRgb01 y lerpWhiteTo viven en la sección CAPA B, junto al filtro)
 
   // Búsqueda profunda del objeto escena por feature detection (misma técnica
   // que vr-compat.js; NO importa el THREE del viewer, solo busca).
@@ -156,124 +143,43 @@
   }
 
   // ==========================================================================
-  // CAPA A — TINTE GLOBAL POR MATERIALES (primaria, VR-compatible)
+  // CAPA B — FILTRO MULTIPLICATIVO PER-EYE (única capa en v9)
+  // Equivalent E XR del overlay CSS 'mix-blend-mode: color' del body-end PC.
+  // Sin tinte de materiales: resultado = colorEscena × colorFiltro (lente real).
   // ==========================================================================
-  function storeOriginals() {
-    if (originalsSaved) return;
-    var mats = [];
-    try {
-      if (typeof viewer.getEditableMaterials === 'function') mats = viewer.getEditableMaterials() || [];
-      else { warn('getEditableMaterials no disponible en este viewer'); }
-    } catch (e) { warn('getEditableMaterials error:', e); }
+  function hexToRgb01(hexNum) {
+    return {
+      r: ((hexNum >> 16) & 255) / 255,
+      g: ((hexNum >> 8) & 255) / 255,
+      b: (hexNum & 255) / 255
+    };
+  }
 
-    log('storeOriginals -> total editables reportados:', mats.length,
-        '| con nombre:', mats.filter(function (m) { return m && m.name; }).length);
-
-    var missingBase = 0;
-    var skippedSky = 0;
-    var cloneFails = 0;
-    for (var i = 0; i < mats.length; i++) {
-      var m = mats[i];
-      if (!m || !m.name) continue;
-      if (SKIP_MATERIAL.test(m.name)) { skippedSky++; continue; }
-      if (!m.baseColor) { missingBase++; continue; }
-      if (originals[m.name]) continue;
-      try { originals[m.name] = m.baseColor.clone(); }
-      catch (e) { cloneFails++; warn('storeOriginals -> clone FALLÓ en material:', m.name, '-', e); }
-    }
-    originalsSaved = true;
-    var savedCount = Object.keys(originals).length;
-    log('materiales originales guardados:', savedCount,
-        '| omitidos (sky):', skippedSky,
-        missingBase ? ('| sin baseColor: ' + missingBase) : '',
-        cloneFails ? ('| clone con error: ' + cloneFails) : '');
-    if (savedCount === 0) {
-      warn('storeOriginals -> 0 originales guardados: la temperatura NO podrá aplicarse.');
-      warn('¿setAllMaterialsEditable() se llamó ANTES de cargar la escena? (ver init)');
-    }
-
-    if (pendingTemp) {
-      // Temp pedida por el usuario antes de que se guardaran los originales:
-      // se aplica ahora (comportamiento por clic, no automático).
-      var k = pendingTemp; pendingTemp = null;
-      applyTemp(k);
-    } else {
-      // v6: NO se restaura la temperatura guardada en localStorage al
-      // arrancar (evita el tinte de 149 materiales en el primer frame,
-      // que retrasaba/bloqueaba la carga del showroom).
-      log('storeOriginals -> sin restauración automática de temperatura al arrancar');
-    }
+  // Color del filtro = lerp(blanco → hexPreset, k); con k=0 => blanco => sin cambio.
+  function lerpWhiteTo(hexNum, k) {
+    var c = hexToRgb01(hexNum);
+    return {
+      r: 1 + (c.r - 1) * k,
+      g: 1 + (c.g - 1) * k,
+      b: 1 + (c.b - 1) * k
+    };
   }
 
   function applyTemp(key) {
     key = String(key);
     var p = PRESETS[key];
     if (!p) { warn('preset desconocido:', key); return; }
-
-    // v6: asegura que el trabajo pesado (guardar originales) se programe
-    // (diferido) en cuanto haya interacción del usuario.
-    ensureReady();
-
-    if (!originalsSaved) { pendingTemp = key; log('escena aún no lista; temp en cola:', key); return; }
-    if (!getTHREE()) { warn('THREE no disponible aún'); return; }
-
     activeTemp = key;
-    var tint = hexToRgb01(p.hexNum);
-    var k = p.intensity * TINT_SCALE;
-    log('FILTRO -> aplicando', key, '(' + p.label + ') k=', k.toFixed(2),
-        '| quad:', !!quad, '| originales:', Object.keys(originals).length);
-
-    var changed = 0;
-    var fails = 0;
-    var firstErr = null;
-    var firstErrName = null;
-    for (var name in originals) {
-      if (!Object.prototype.hasOwnProperty.call(originals, name)) continue;
-      var m = null;
-      try { m = viewer.findMaterial(name); } catch (e) { m = null; }
-      if (!m || !m.baseColor) continue;
-      var o = originals[name];
-      try {
-        if (p.intensity === 0) {
-          // RESTAURAR ORIGINAL por componentes (no .copy()): .copy es método de
-          // instancia THREE — si baseColor es objeto plano {r,g,b} lanza
-          // TypeError y el preset 4000K aplicaba a 0 materiales. La asignación
-          // directa funciona con cualquier representación.
-          m.baseColor.r = o.r;
-          m.baseColor.g = o.g;
-          m.baseColor.b = o.b;
-        } else {
-          // lerp MANUAL por componentes: evita mezclar instancias THREE distintas
-          m.baseColor.r = o.r + (tint.r - o.r) * k;
-          m.baseColor.g = o.g + (tint.g - o.g) * k;
-          m.baseColor.b = o.b + (tint.b - o.b) * k;
-        }
-        changed++;
-      } catch (e) {
-        // DIAGNÓSTICO (captura el primer error sin spam): si un preset aplica a
-        // 0 materiales (p.ej. 4000K = neutro que usa baseColor.copy), aquí se ve
-        // el motivo exacto.
-        fails++;
-        if (!firstErr) { firstErr = e; firstErrName = name; }
-      }
-    }
-    if (fails > 0) {
-      warn('materiales con error al aplicar', key, ':', fails,
-           '| primer error en "' + firstErrName + '":',
-           firstErr && firstErr.message ? firstErr.message : firstErr);
-    }
-
-    try { viewer.requestFrame(); } catch (e) { warn('requestFrame FALLÓ:', e); }
-
+    log('FILTRO -> aplicando', key, '(' + p.label + ') k=', p.k,
+        '| quad:', !!quad, '| modo: multiplicativo (sin tinte de materiales)');
+    try { viewer.requestFrame(); } catch (e) { /* no crítico */ }
     updateDomActive(key);
     persist(key);
     updateQuad(p);
     vrFeedback();
-    log('temperatura aplicada:', key, '(', p.label, ') materiales:', changed,
-        fails > 0 ? ('con ' + fails + ' fallos') : '');
   }
 
-  function resetTemp() { applyTemp('4000'); } // 4000K = neutro = originales
+  function resetTemp() { applyTemp('4000'); } // 4000K = neutro (filtro blanco) = originales
 
   function persist(key) {
     try { localStorage.setItem(STORAGE_KEY, key); } catch (e) { /* privado */ }
@@ -386,13 +292,15 @@
   }
 
   // ==========================================================================
-  // CAPA B — QUAD TRANSLÚCIDO ANCLADO A LA CABEZA (solo XR)
-  // v7: es el equivalente WEBXR del overlay CSS 'mix-blend-mode: color' del
-  // body-end (div#temp-overlay de script (2).js). El DOM no se renderiza en
-  // el casco; este quad se dibuja delante de la cámara en AMBOS OJOS con
-  // depthTest/depthWrite desactivados, tiñendo toda la imagen (filtro general).
-  // NOTA HONESTA (B06): aproxima el blend 'color' con un velo de color
-  // translúcido; el blend exacto requeriría postproceso, inviable con la API.
+  // CAPA B — FILTRO MULTIPLICATIVO PER-EYE (única capa en v9)
+  // Equivalente XR del overlay CSS 'mix-blend-mode: color' del body-end PC
+  // (script (2).js:107-135). NO tintes materiales; es un lente/gel real:
+  // resultado = colorEscena × colorFiltro, con blend custom dst*src.
+  // El quad se dibuja delante de la cámara en AMBOS OJOS con
+  // depthTest/depthWrite desactivados. Blending multiplicativo:
+  //   THREE.CustomBlending + AddEquation + ZeroFactor + SrcColorFactor.
+  // NOTA HONESTA (B06): aproxima el blend 'color' exacto de CSS (que exige
+  // postproceso) con multiplicación de color — físicamente un lente real.
   // Se construye automáticamente al iniciar sesión XR (onSessionStart).
   // ==========================================================================
   function buildQuad() {
@@ -401,30 +309,38 @@
       var T = getTHREE();
       var geo = new T.PlaneGeometry(QUAD_SIZE, QUAD_SIZE);
       var mat = new T.MeshBasicMaterial({
-        color: PRESETS['2700'].hexNum,
+        color: 0xFFFFFF,          // k=0 => blanco => sin cambio
         transparent: true,
-        opacity: 0,
+        opacity: 1,
         depthTest: false,
         depthWrite: false,
         side: T.DoubleSide,
         toneMapped: false,
-        blending: T.NormalBlending
+        blending: T.CustomBlending,
+        blendEquation: T.AddEquation,
+        blendSrc: T.ZeroFactor,
+        blendDst: T.SrcColorFactor // dst * src: multiplicativo (lente)
       });
       quad = new T.Mesh(geo, mat);
       quad.renderOrder = 999;
       quad.frustumCulled = false; // siempre visible aunque la cámara mire otro lado
       quad.visible = false;
       xrScene.add(quad);
-      log('quad de temperatura (filtro VR) creado');
+      log('quad de temperatura (filtro multiplicativo VR) creado');
+      // Si ya hay temp activa (p.ej. ?temp= en URL), aplicar al quadro creado.
+      if (activeTemp && PRESETS[activeTemp]) updateQuad(PRESETS[activeTemp]);
     } catch (e) { quad = null; warn('quad no creado:', e); }
   }
 
   function updateQuad(p) {
     if (!quad) return;
     try {
-      quad.material.color.setHex(p.hexNum);
-      quad.material.opacity = p.intensity > 0 ? p.intensity * QUAD_OPACITY_SCALE : 0;
-      quad.visible = p.intensity > 0;
+      var fh = p.filterHex || p.hexNum;   // 4000K usa blanco (neutro) en el filtro
+      var c = lerpWhiteTo(fh, p.k);
+      quad.material.color.setRGB(c.r, c.g, c.b);
+      quad.visible = p.k > 0;
+      log('filtro quad -> color', c.r.toFixed(3), c.g.toFixed(3), c.b.toFixed(3),
+          '| visible:', quad.visible);
     } catch (e) { /* instancia THREE distinta: omitir capa B */ }
   }
 
@@ -738,29 +654,24 @@
   }
 
   // ==========================================================================
-  // TRABAJO PESADO DIFERIDO (v6: fix de carga en Quest).
-  // storeOriginals (clonar 149 materiales) y ensureScene (deepFind) NO se
-  // ejecutan durante onSceneReadyToDisplay: se programan para cuando el
-  // navegador esté libre (requestIdleCallback / setTimeout 0) o, como
-  // máximo, en onSceneLoadComplete. Así el primer frame se pinta sin
-  // bloqueos y la carga del showroom no se congela.
+  // TRABAJO LIGERO DIFERIDO (fix de carga en Quest, conservado de v6).
+  // ensureScene (deepFind acotado) NO se ejecuta durante onSceneReadyToDisplay:
+  // se programa para cuando el navegador esté libre (requestIdleCallback /
+  // setTimeout 0) o en onSceneLoadComplete. v9: ya NO existe storeOriginals
+  // (se eliminó la Capa A); solo se busca la escena para el quad/esferas VR.
   // ==========================================================================
   var heavyScheduled = false;
 
   function ensureReady() {
     if (heavyScheduled) return;
     heavyScheduled = true;
-    log('trabajo pesado programado (diferido: storeOriginals + ensureScene)');
+    log('ensureScene programada (diferido, para filtro/esferas VR)');
     if (typeof window.requestIdleCallback === 'function') {
-      requestIdleCallback(runHeavy, { timeout: 2000 });
+      requestIdleCallback(function () { try { ensureScene(); } catch (e) { warn('ensureScene error:', e); } },
+                          { timeout: 2000 });
     } else {
-      setTimeout(runHeavy, 0);
+      setTimeout(function () { try { ensureScene(); } catch (e) { warn('ensureScene error:', e); } }, 0);
     }
-  }
-
-  function runHeavy() {
-    try { storeOriginals(); } catch (e) { warn('storeOriginals error:', e); }
-    try { ensureScene(); } catch (e) { warn('ensureScene error:', e); }
   }
 
   // ==========================================================================
@@ -780,8 +691,7 @@
 
     try {
       viewer.onSceneReadyToDisplay(function () {
-        // v6: SOLO trabajo ligero aquí (registro de oyentes).
-        // El clonado de materiales y la búsqueda de escena se difieren.
+        // v6+: SOLO trabajo ligero aquí (registro de oyentes).
         wireDomButtons();
         wireEditorButtons();
       });
@@ -789,21 +699,21 @@
 
     try {
       viewer.onSceneLoadComplete(function () {
-        log('onSceneLoadComplete -> programando trabajo diferido');
+        log('onSceneLoadComplete -> programando ensureScene diferida');
         ensureReady();
       });
     } catch (e) { warn('onSceneLoadComplete:', e); }
 
     // Fallback si ni onSceneReadyToDisplay ni onSceneLoadComplete disparan:
-    // se programa igualmente el trabajo pesado (arranque tardío).
+    // se programa igualmente la búsqueda de escena (arranque tardío).
     setTimeout(function () {
-      if (!originalsSaved) {
-        log('fallback 8s: programando trabajo diferido');
+      if (!xrScene) {
+        log('fallback 8s: programando ensureScene');
         ensureReady();
       }
     }, 8000);
 
-    // PRUEBA DE AISLAMIENTO (v8): si la URL lleva ?temp=2700|3000|4000|6000,
+    // PRUEBA DE AISLAMIENTO (v8): si la URL lleva ?temp=2700|3000|4000|6000|6500,
     // se aplica el filtro al cargar (sin tocar nada). Sirve para confirmar si
     // el PROBLEMA es la DETECCIÓN DE CLIC (filtro se ve) o el FILTRO mismo
     // (nada se ve, ni así).
@@ -828,8 +738,6 @@
         session: !!xrSession,
         vrReady: vrReady,
         active: activeTemp,
-        pending: pendingTemp,
-        materials: Object.keys(originals).length,
         quad: !!quad,
         spheres: spheres.length,
         offset: sceneOffset
