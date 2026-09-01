@@ -1,6 +1,6 @@
 ﻿/**
  * ============================================================================
- *  VR-COMPAT para Shapespark — WebXR (Meta Quest 2/3/Pro) — v11 VR-only
+ *  VR-COMPAT para Shapespark — WebXR (Meta Quest 2/3/Pro) — v13 VR-only
  * ============================================================================
  *  En VR genera ESFERAS 3D propias (no dependen de extensiones del editor)
  *  que CAMBIAN DE VISTA/INTENSIDAD al clicar:
@@ -21,7 +21,7 @@
  *  viewer.getCameraPosition() (position-lock).
  *
  *  Integración (body-end.html VR-only):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-compat.js?v=11"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-compat.js?v=13"></script>
  * ============================================================================
  */
 (function () {
@@ -461,6 +461,7 @@
   }
 
   var SCENE_OFFSET = { x: 0, y: 0, z: 0 }; // calibrar si el láser sale desplazado
+  var lastViewName = null; // v13: B2 — reconstruir esferas VR solo si cambia la vista
 
   function drawLaser(T3, ax, ay, az, bx, by, bz) {
     var arr = vr.laserGeo.attributes.position.array;
@@ -648,6 +649,9 @@
     log('Sesión WebXR terminada.');
     if (vr.group) vr.group.visible = false;
     if (vr.laser) vr.laser.visible = false;
+    // v13: re-entrada limpia — la próxima sesión reconstruye la UI.
+    vr.ready = false;
+    lastViewName = null;
   }
 
   function watchXR() {
@@ -670,15 +674,21 @@
       watchXR();
     });
 
+    // B2 (v13): lastViewName evita reconstruir las esferas VR en cada
+    // re-teleport del position-lock (misma vista); solo se reconstruyen
+    // cuando la vista realmente CAMBIA.
     try {
       viewer.onViewSwitchDone(function (viewName) {
         activeZone = null;
         ZONES_CONFIG.forEach(function (z) {
           if (z.triggerViews.indexOf(viewName) !== -1) activeZone = z;
         });
+        var changed = (viewName !== lastViewName);
+        lastViewName = viewName;
         log('Vista activa:', viewName,
-            '-> zona:', activeZone ? activeZone.title : 'SIN ZONA (no está en ZONES_CONFIG)');
-        if (vr.ready && xrScene) buildVRSpheres(); // reconstruye por zona
+            '-> zona:', activeZone ? activeZone.title : 'SIN ZONA (no está en ZONES_CONFIG)',
+            '| cambio:', changed);
+        if (changed && vr.ready && xrScene) buildVRSpheres(); // reconstruye por zona
       });
     } catch (e) {
       warn('onViewSwitchDone no se pudo registrar:', e && e.message ? e.message : e);

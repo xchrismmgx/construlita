@@ -1,6 +1,6 @@
 ﻿/**
  * ============================================================================
- *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v11
+ *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v13
  * ============================================================================
  *  v9 (filtro "lentes de color", SIN tinte de materiales):
  *   - Se ELIMINÓ la Capa A (tinte de baseColor de materiales): NO cambia el
@@ -20,7 +20,7 @@
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
  *  Integración (body-end.html VR-only, DESPUÉS de vr-compat.js):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=11"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=13"></script>
  * ============================================================================
  */
 (function () {
@@ -66,9 +66,13 @@
   // Botones del editor: acepta btn_2700 / boton-2700 / Btn 2700 / Luz 2700K / "2700"
   // en type O en name (v8: match tolerante para detectar cualquier botón 3D
   // que el usuario haya nombrado de forma distinta).
+  // v13 (B4): SIEMPRE con límites no numéricos alrededor del número — evita
+  // falsos positivos tipo "12700" o "270000". La escalera es:
+  //   1) ANCHORED (btn_2700, temp 2700K...)  2) LOOSE (cualquier " 2700 " suelto)
+  //   3) ANY (mismo LOOSE; último recurso ya cubierto por LOOSE)
   var BTN_ANCHORED = /^(?:btn|boton|botón|temperatura|temp|luz|cal)[-_ ]?(2700|3000|4000|6000|6500)(?:K)?$/i;
-  var BTN_LOOSE = /(?:^|[^0-9])(2700|3000|4000|6000|6500)(?:[^0-9]|$)/; // fallback: cualquier ocurrencia
-  var BTN_ANY = /(2700|3000|4000|6000|6500)/; // última instancia: substring puro
+  var BTN_LOOSE = /(?:^|[^0-9])(2700|3000|4000|6000|6500)(?:[^0-9]|$)/; // fallback: ocurrencia delimitada
+  var BTN_ANY = /(?:^|[^0-9])(2700|3000|4000|6000|6500)(?:[^0-9]|$)/;  // v13: idem LOOSE (sin substring puro)
   var STORE_LIMIT = 8; // máx. ancestros a revisar buscando el type del botón
 
   // Parámetro de aislamiento: ?temp=2700 (prueba SIN consola: si al cargar
@@ -113,7 +117,7 @@
   // v6: guarda de ciclos (visited) + tope de nodos. La versión anterior
   // (sin visited) recorría el grafo completo del viewer de forma explosiva y
   // bloqueaba el hilo principal durante la carga (bucle de carga en Quest).
-  var DEEP_FIND_LIMIT = 30000; // tope de seguridad de nodos visitados
+  var DEEP_FIND_LIMIT = 100000; // v12: 30k se agotaba en escenas gigantes (724 nodos + internos)
 
   function deepFind(root, maxDepth) {
     var visited = new Set();
@@ -180,15 +184,23 @@
   var FILTER_UNIFORMS = [];      // {mat, uniforms} activos
   var FILTER_PATCHED = false;
   var FILTER_PATCH_COUNT = 0;
+  var CURRENT_FILTER = { r: 1, g: 1, b: 1 }; // color activo (blanco = sin filtro)
 
   function patchMaterialsFilter() {
     if (FILTER_PATCHED) return;
-    FILTER_PATCHED = true;
     var mats = [];
     try {
       if (viewer && typeof viewer.getEditableMaterials === 'function') mats = viewer.getEditableMaterials() || [];
       else { warn('getEditableMaterials no disponible; filtro shader NO aplicado'); return; }
     } catch (e) { warn('getEditableMaterials error:', e); return; }
+
+    // B1: si la lista viene VACÍA (escena aún no lista), NO marcar como
+    // parcheado — se reintentará en el siguiente applyTemp.
+    if (!mats.length) {
+      log('filtro shader: 0 materiales editables aún (escena cargando); se reintentará');
+      return;
+    }
+    FILTER_PATCHED = true;
 
     for (var i = 0; i < mats.length; i++) {
       var m = mats[i];
@@ -202,7 +214,17 @@
           try { prevOnBeforeCompile.call(this, shader, renderer); } catch (e) {}
         }
         if (!shader.uniforms.uVRTEMP_FilterColor) {
-          shader.uniforms.uVRTEMP_FilterColor = { value: { r: 1, g: 1, b: 1 } };
+          // B3: solo inyectar si el shader usa gl_FragColor (GLSL1). Si el
+          // viewer compila en GLSL3 (pc_fragColor), NO inyectar (rompería
+          // la compilación) — log + skip.
+          if (shader.fragmentShader.indexOf('gl_FragColor') === -1) {
+            warn('filtro shader: shader sin gl_FragColor (posible GLSL3); omitido');
+            return;
+          }
+          // v12: inicializar el uniform con el color ACTIVO (no blanco).
+          shader.uniforms.uVRTEMP_FilterColor = {
+            value: { r: CURRENT_FILTER.r, g: CURRENT_FILTER.g, b: CURRENT_FILTER.b }
+          };
           // Declaración del uniform al inicio del fragment shader.
           var header = 'uniform vec3 uVRTEMP_FilterColor;\n';
           shader.fragmentShader = header + shader.fragmentShader;
@@ -230,6 +252,15 @@
         }
         if (!already) FILTER_UNIFORMS.push({ mat: this, uniforms: shader.uniforms });
       };
+
+      // B5: forzar programa único por material parcheado (patrón LUTVR).
+      var prevCacheKey = m.customProgramCacheKey;
+      m.customProgramCacheKey = function () {
+        var base = '';
+        try { if (typeof prevCacheKey === 'function') base = prevCacheKey.call(this); } catch (e) {}
+        return base + '|VRTEMP12';
+      };
+
       try { m.needsUpdate = true; } catch (e) {}
       FILTER_PATCH_COUNT++;
     }
@@ -251,11 +282,16 @@
     if (!p) { warn('preset desconocido:', key); return; }
     activeTemp = key;
 
-    // v11: filtro SHADER (principal, sin escena interna).
+    // v11/v12: filtro SHADER (principal, sin escena interna).
     patchMaterialsFilter();
     var fh = p.filterHex || p.hexNum;   // 4000K: blanco = neutro
     var c = lerpWhiteTo(fh, p.k);
+    CURRENT_FILTER.r = c.r; CURRENT_FILTER.g = c.g; CURRENT_FILTER.b = c.b;
     updateFilterUniforms(c);
+    // Los materiales se recompilan el próximo frame; re-sync tras 100/500ms
+    // para asegurar que los uniforms recién creados reciban el color.
+    setTimeout(function () { updateFilterUniforms(CURRENT_FILTER); }, 100);
+    setTimeout(function () { updateFilterUniforms(CURRENT_FILTER); }, 500);
     // Refuerzo opcional: quad per-eye solo si la escena interna existe.
     ensureFilterReady();
     if (quad) updateQuad(p);
