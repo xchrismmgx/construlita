@@ -1,6 +1,6 @@
 ﻿/**
  * ============================================================================
- *  VR-COMPAT para Shapespark — WebXR (Meta Quest 2/3/Pro) — v13 VR-only
+ *  VR-COMPAT para Shapespark — WebXR (Meta Quest 2/3/Pro) — v14 VR-only
  * ============================================================================
  *  En VR genera ESFERAS 3D propias (no dependen de extensiones del editor)
  *  que CAMBIAN DE VISTA/INTENSIDAD al clicar:
@@ -21,7 +21,7 @@
  *  viewer.getCameraPosition() (position-lock).
  *
  *  Integración (body-end.html VR-only):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-compat.js?v=13"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-compat.js?v=14"></script>
  * ============================================================================
  */
 (function () {
@@ -71,6 +71,9 @@
     console.warn.apply(console, [TAG].concat(args));
     diagPush('⚠ ' + args.join(' '));
   }
+
+  // Sello de versión: PRIMERA línea de log (verifica caché al instante).
+  log('versión 14 (v14)');
 
   if (DIAG_MODE) {
     window.addEventListener('error', function (e) {
@@ -168,12 +171,25 @@
 
   // ==========================================================================
   // DETECCIÓN DE ESCENA INTERNA (feature detection)
+  // v14: 1) candidatos por nombre, 2) DFS filtrado (typed arrays/funciones/DOM
+  // descartados — eran los que agotaban el tope), profundidad 10.
   // ==========================================================================
   var SKIP_KEYS = { canvas: 1, domElement: 1, gl: 1, parent: 1, parentNode: 1,
                     parentElement: 1, children: 1, document: 1, window: 1 };
+  var FIND_VISITS = 0;
+  var FIND_LIMIT = 200000;
+
+  function isFindable(v) {
+    if (!v || typeof v !== 'object') return false;
+    if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(v)) return false; // typed arrays
+    if (v.nodeType) return false; // DOM
+    return true;
+  }
 
   function deepFind(root, predicate, visited, depth) {
-    if (!root || typeof root !== 'object' || depth > 4 || visited.has(root)) return null;
+    if (depth > 10 || FIND_VISITS > FIND_LIMIT) return null;
+    FIND_VISITS++;
+    if (!isFindable(root) || visited.has(root)) return null;
     visited.add(root);
     try { if (predicate(root)) return root; } catch (e) {}
     var keys;
@@ -183,7 +199,7 @@
       if (SKIP_KEYS[k]) continue;
       var v;
       try { v = root[k]; } catch (e) { continue; }
-      if (v && typeof v === 'object') {
+      if (isFindable(v)) {
         var f = deepFind(v, predicate, visited, depth + 1);
         if (f) return f;
       }
@@ -193,10 +209,29 @@
 
   function probeEngine() {
     if (!viewer) return false;
-    try { xrScene = deepFind(viewer, function (o) { return o.isScene === true; }, new Set(), 0); }
-    catch (e) { xrScene = null; }
+    // v14 Paso 1: candidatos directos por nombre (casi gratis).
+    var CAND = ['scene', 'threeScene', 'xrScene', 'renderer', 'camera'];
+    for (var i = 0; i < CAND.length && !xrScene; i++) {
+      try {
+        var c = viewer[CAND[i]];
+        if (c) {
+          if (c.isScene === true || c.isScene === 1) xrScene = c;
+          else if (c.scene && (c.scene.isScene === true || c.scene.isScene === 1)) xrScene = c.scene;
+          else {
+            FIND_VISITS = 0;
+            xrScene = deepFind(c, function (o) { return o.isScene === true || o.isScene === 1; }, new Set(), 0);
+          }
+        }
+      } catch (e) { /* candidato inexistente */ }
+    }
+    // v14 Paso 2: recorrido completo filtrado.
+    if (!xrScene) {
+      FIND_VISITS = 0;
+      try { xrScene = deepFind(viewer, function (o) { return o.isScene === true || o.isScene === 1; }, new Set(), 0); }
+      catch (e) { xrScene = null; }
+    }
     if (xrScene) { log('Escena interna detectada OK'); return true; }
-    warn('No se pudo acceder a la escena Three.js interna. UI VR desactivada en el casco.');
+    log('escena interna no accesible (no crítico): esferas VR autogeneradas no se construirán');
     return false;
   }
 

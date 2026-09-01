@@ -1,6 +1,6 @@
 ﻿/**
  * ============================================================================
- *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v13
+ *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v14
  * ============================================================================
  *  v9 (filtro "lentes de color", SIN tinte de materiales):
  *   - Se ELIMINÓ la Capa A (tinte de baseColor de materiales): NO cambia el
@@ -20,7 +20,7 @@
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
  *  Integración (body-end.html VR-only, DESPUÉS de vr-compat.js):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=13"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=14"></script>
  * ============================================================================
  */
 (function () {
@@ -44,6 +44,9 @@
     console.warn.apply(console, [TAG].concat(args));
     if (window.VRCOMPAT && window.VRCOMPAT.diag) window.VRCOMPAT.diag('⚠ ' + args.join(' '));
   }
+
+  // Sello de versión: PRIMERA línea de log (verifica caché al instante).
+  log('versión 14 (v14)');
 
   // ==========================================================================
   // PRESETS — PALETA CALIBRADA del body-end de ejemplo (.temp-btn):
@@ -117,7 +120,18 @@
   // v6: guarda de ciclos (visited) + tope de nodos. La versión anterior
   // (sin visited) recorría el grafo completo del viewer de forma explosiva y
   // bloqueaba el hilo principal durante la carga (bucle de carga en Quest).
-  var DEEP_FIND_LIMIT = 100000; // v12: 30k se agotaba en escenas gigantes (724 nodos + internos)
+  // v14: 1) candidatos por nombre, 2) BFS filtrado — typed arrays (buffers de
+  // 22 MB de vértices) descartados: eran los que agotaban el tope; funciones
+  // y DOM también; profundidad 10, tope 200k.
+  var DEEP_FIND_LIMIT = 200000;
+  var SCENE_SCANNED = false; // log único de "no accesible"
+
+  function isFindable(v) {
+    if (!v || typeof v !== 'object') return false;
+    if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(v)) return false; // typed arrays
+    if (v.nodeType) return false; // DOM
+    return true;
+  }
 
   function deepFind(root, maxDepth) {
     var visited = new Set();
@@ -127,8 +141,8 @@
       var item = stack.pop();
       visits++;
       var node = item.obj;
-      if (!node || typeof node !== 'object') continue;
-      if (item.depth > (maxDepth == null ? 4 : maxDepth)) continue;
+      if (!isFindable(node)) continue;
+      if (item.depth > (maxDepth == null ? 10 : maxDepth)) continue;
       if (visited.has(node)) continue;
       visited.add(node);
       try { if (node.isScene === true || node.isScene === 1) return node; } catch (e) { /* sin getter */ }
@@ -137,11 +151,27 @@
       for (var i = 0; i < keys.length; i++) {
         var v;
         try { v = node[keys[i]]; } catch (e) { continue; }
-        if (v && typeof v === 'object') stack.push({ obj: v, depth: item.depth + 1 });
+        if (isFindable(v)) stack.push({ obj: v, depth: item.depth + 1 });
       }
     }
-    if (visits >= DEEP_FIND_LIMIT) {
-      warn('deepFind: alcanzado tope de ' + DEEP_FIND_LIMIT + ' nodos sin encontrar la escena');
+    if (visits >= DEEP_FIND_LIMIT && !SCENE_SCANNED) {
+      SCENE_SCANNED = true;
+      log('deepFind: tope alcanzado — escena interna no accesible (no crítico: filtro shader y botones del editor siguen funcionando)');
+    }
+    return null;
+  }
+
+  // v14 Paso 1: candidatos por nombre en el viewer (casi gratis) antes del BFS.
+  function findSceneByCandidates() {
+    if (!viewer) return null;
+    var CAND = ['scene', 'threeScene', 'xrScene', 'renderer', 'camera'];
+    for (var i = 0; i < CAND.length; i++) {
+      try {
+        var c = viewer[CAND[i]];
+        if (!c) continue;
+        if (c.isScene === true || c.isScene === 1) return c;
+        if (c.scene && (c.scene.isScene === true || c.scene.isScene === 1)) return c.scene;
+      } catch (e) { /* candidato inexistente */ }
     }
     return null;
   }
@@ -720,12 +750,17 @@
   function ensureScene() {
     if (xrScene) return true;
     if (!viewer) return false;
-    // v10: profundidad 8 (antes 4) para localizar la escena interna en
-    // arquitecturas de viewer más anidadas.
-    xrScene = deepFind(viewer, 8);
-    if (!xrScene) warn('ensureScene -> escena interna NO encontrada (UI VR de temperatura desactivada)');
-    else log('ensureScene -> escena interna encontrada (depth>=5)');
-    return !!xrScene;
+    // v14: candidatos por nombre primero, luego BFS filtrado (profundidad 10).
+    xrScene = findSceneByCandidates() || deepFind(viewer, 10);
+    if (!xrScene) {
+      if (!SCENE_SCANNED) {
+        SCENE_SCANNED = true;
+        log('escena interna no accesible (no crítico): filtro shader y botones del editor siguen funcionando');
+      }
+      return false;
+    }
+    log('ensureScene -> escena interna encontrada');
+    return true;
   }
 
   function onSelectStart() {
