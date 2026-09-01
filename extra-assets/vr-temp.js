@@ -1,6 +1,6 @@
 ﻿/**
  * ============================================================================
- *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v17
+ *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v19
  * ============================================================================
  *  v9 (filtro "lentes de color", SIN tinte de materiales):
  *   - Se ELIMINÓ la Capa A (tinte de baseColor de materiales): NO cambia el
@@ -20,7 +20,7 @@
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
  *  Integración (body-end.html VR-only, DESPUÉS de vr-compat.js):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=17"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=19"></script>
  * ============================================================================
  */
 (function () {
@@ -46,7 +46,7 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 17 (v17) — X/Y mando izquierdo + grip + detección de índices');
+  log('versión 19 (v19) — sesión capturada + X/Y + joystick + grip + teclas');
 
   // ==========================================================================
   // PRESETS — PALETA CALIBRADA del body-end de ejemplo (.temp-btn):
@@ -632,13 +632,15 @@
     }
   }
 
-  // v17: POLLING DE BOTONES X/Y (mando izquierdo) en cada frame XR.
-  //   X (buttons[4]) -> siguiente temperatura | Y (buttons[5]) -> anterior.
+  // v17/v18: POLLING DE BOTONES en cada frame XR (mando X/Y + joystick clicks).
+  //   X (buttons[4]) -> siguiente | Y (buttons[5]) -> anterior.
+  //   Joystick click (buttons[2]): DERECHA -> siguiente | IZQUIERDA -> anterior.
   // Detecta flancos de subida (press nuevo) y registra el índice real de cada
   // botón pulsado (primeras 12 veces) para validar el mapeo en tu hardware.
   var prevButtons = {};   // handedness -> {indice: pressed}
   var btnLogCount = 0;
-  var X_BTN = 4, Y_BTN = 5; // índices estándar WebXR (ajustables por evidencia)
+  var X_BTN = 4, Y_BTN = 5;   // índices X/Y (estándar WebXR)
+  var STICK_BTN = 2;          // índice joystick click (estándar WebXR)
 
   function pollGamepadButtons() {
     var sources = xrSession.inputSources || [];
@@ -658,6 +660,9 @@
           if (hand === 'left') {
             if (bi === X_BTN) { cycleTemp(1); }
             else if (bi === Y_BTN) { cycleTemp(-1); }
+            else if (bi === STICK_BTN) { cycleTemp(-1); } // joystick izquierdo: anterior
+          } else if (hand === 'right') {
+            if (bi === STICK_BTN) { cycleTemp(1); }       // joystick derecho: siguiente
           }
         }
       }
@@ -748,17 +753,31 @@
 
   // ==========================================================================
   // SESIÓN XR — oyentes PROPIOS (aditivos a los de vr-compat.js)
+  // v19: acepta la sesión capturada por vr-compat (VRCOMPAT.getSession) —
+  // getSession() de navigator.xr es API NO estándar y falla en el Quest.
   // ==========================================================================
   function onSessionStart() {
     if (xrSession) return; // blindaje: evitar doble registro de oyentes/rAF
-    vrReady = false;
-    xrSession = null;
-    if (!navigator.xr || typeof navigator.xr.getSession !== 'function') {
-      log('navigator.xr.getSession no disponible; esperando evento con sesión');
+    var sess = null;
+    if (window.VRCOMPAT && typeof window.VRCOMPAT.getSession === 'function') {
+      sess = window.VRCOMPAT.getSession();
+    }
+    if (!sess && navigator.xr && typeof navigator.xr.getSession === 'function') {
+      try { sess = navigator.xr.getSession() || null; } catch (e) {}
+    }
+    if (!sess) {
+      log('sesión XR aún no disponible (sin captura); reintentando en 250ms');
+      setTimeout(onSessionStart, 250); // espera la promesa de requestSession
       return;
     }
-    xrSession = navigator.xr.getSession();
-    if (!xrSession) { log('sesión XR aún no expuesta'); return; }
+    activateSession(sess);
+  }
+
+  function activateSession(sess) {
+    if (xrSession) return;
+    xrSession = sess;
+    vrReady = false;
+    log('SESION VR ACTIVA ✓ (sesión conectada)');
     xrSession.requestReferenceSpace('local').then(function (ref) {
       xrRefSpace = ref;
       log('refSpace XR lista');
@@ -775,7 +794,7 @@
 
     // v16: confirmación de entrada a VR + mandos detectados.
     var srcs = (xrSession.inputSources || []);
-    log('SESION VR ACTIVA ✓ — mandos detectados:', srcs.length,
+    log('mandos detectados:', srcs.length,
         srcs.map(function (s) { return s.handedness || '?'; }).join('+'));
 
     // v7: construir la UI VR de temperatura AL ENTRAR al casco:
@@ -980,6 +999,21 @@
       log('?temp=' + URL_TEMP + ' detectado -> aplicando filtro de aislamiento');
       applyTemp(URL_TEMP);
     }
+
+    // v18: TECLADO DESKTOP (fallback para probar sin casco):
+    //   X = siguiente temperatura | Y = anterior | T = reset (4000K neutro).
+    // Solo actúa si el foco no está en un input (evita interferir con textos).
+    try {
+      document.addEventListener('keydown', function (e) {
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+        if (e.repeat) return;
+        var k = (e.key || '').toLowerCase();
+        if (k === 'x') { log('TECLADO: X -> siguiente'); cycleTemp(1); }
+        else if (k === 'y') { log('TECLADO: Y -> anterior'); cycleTemp(-1); }
+        else if (k === 't') { log('TECLADO: T -> reset neutral'); resetTemp(); }
+      });
+      log('teclado X/Y/T cableado (prueba desktop)');
+    } catch (e) { warn('keydown no registrado:', e); }
 
     watchXR();
   }

@@ -1,6 +1,6 @@
 ﻿/**
  * ============================================================================
- *  VR-COMPAT para Shapespark — WebXR (Meta Quest 2/3/Pro) — v14 VR-only
+ *  VR-COMPAT para Shapespark — WebXR (Meta Quest 2/3/Pro) — v19 VR-only
  * ============================================================================
  *  En VR genera ESFERAS 3D propias (no dependen de extensiones del editor)
  *  que CAMBIAN DE VISTA/INTENSIDAD al clicar:
@@ -21,7 +21,7 @@
  *  viewer.getCameraPosition() (position-lock).
  *
  *  Integración (body-end.html VR-only):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-compat.js?v=14"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-compat.js?v=19"></script>
  * ============================================================================
  */
 (function () {
@@ -73,7 +73,39 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 14 (v14)');
+  log('versión 19 (v19) — captura de sesión XR (requestSession)');
+
+  // ==========================================================================
+  // v19: CAPTURA FIABLE DE LA SESIÓN XR.
+  // Root cause v17: detectábamos la sesión con navigator.xr.getSession()
+  // (API NO estándar; en el navegador del Quest devuelve null) => la capa de
+  // entrada XR nunca se conectaba y ningún botón/mando funcionaba dentro del
+  // casco. Solución: envolver navigator.xr.requestSession (API estándar, que
+  // el viewer llama SIEMPRE al entrar a VR) y capturar la sesión real.
+  // ==========================================================================
+  var capturedSession = null; // sesión XR capturada vía requestSession
+
+  function installSessionCapture() {
+    if (!navigator.xr || !navigator.xr.requestSession) return;
+    // Flag compartido: solo un script envuelve requestSession (evita doble wrap).
+    if (navigator.xr.__vrtempCaptured) return;
+    navigator.xr.__vrtempCaptured = true;
+    var orig = navigator.xr.requestSession.bind(navigator.xr);
+    navigator.xr.requestSession = function (mode, options) {
+      var p = orig(mode, options);
+      Promise.resolve(p).then(function (sess) {
+        capturedSession = sess;
+        log('requestSession interceptada OK -> sesión capturada');
+        handleSession(sess); // conecta la capa XR con la sesión real
+      }).catch(function (e) {
+        warn('requestSession rechazada:', e && e.message ? e.message : e);
+      });
+      return p; // no alteramos la promesa que espera el viewer
+    };
+    log('requestSession interceptada (captura de sesión instalada)');
+  }
+
+  installSessionCapture();
 
   if (DIAG_MODE) {
     window.addEventListener('error', function (e) {
@@ -660,9 +692,21 @@
   // CICLO DE SESIÓN XR
   // ==========================================================================
   function onSessionStart() {
-    xrSession = (navigator.xr.getSession && navigator.xr.getSession()) || null;
-    log('Sesión WebXR iniciada. session=', !!xrSession);
-    if (!xrScene && !probeEngine()) return;
+    // v19: usa la sesión capturada por requestSession; getSession es fallback.
+    var sess = capturedSession || null;
+    if (!sess && navigator.xr.getSession) { try { sess = navigator.xr.getSession() || null; } catch (e) {} }
+    if (!sess) {
+      log('sessionstart sin sesión capturada aún; pendiente la promesa de requestSession');
+      return;
+    }
+    handleSession(sess);
+  }
+
+  // Handler común: recibe la sesión (capturada o del evento sessionstart).
+  function handleSession(sess) {
+    if (xrSession) return; // ya conectada
+    xrSession = sess || null;
+    log('SESION VR ACTIVA ✓ (sesión conectada)');
     if (!vr.ready) {
       Promise.resolve()
         .then(function () {
@@ -739,6 +783,9 @@
     // Registra un handler externo de clics 3D (usado por vr-temp.js para
     // sus botones btn_2700..btn_6000). Un solo onNodeTypeClicked compartido.
     onNodeClick: registerNodeClick,
+    // v19: acceso a la sesión XR capturada (vr-temp la necesita para sus
+    // listeners de mando/gamepad; evita depender de getSession no estándar).
+    getSession: function () { return capturedSession || xrSession || null; },
     // Reenvío de logs al panel de diagnóstico en pantalla (?diag=1).
     diag: diagPush,
     labels: VRLABELS,
