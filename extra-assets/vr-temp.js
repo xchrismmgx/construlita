@@ -1,6 +1,6 @@
-/**
+﻿/**
  * ============================================================================
- *  VR-TEMP para Shapespark — Temperatura de color GLOBAL (WebXR) — v6
+ *  VR-TEMP para Shapespark — Temperatura de color GLOBAL (WebXR) — v7
  * ============================================================================
  *  4 presets: 2700K / 3000K / 4000K (neutro = original) / 6000K.
  *
@@ -24,7 +24,7 @@
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
  *  Integración (body-end.html, DESPUÉS de vr-compat.js):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=6"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=7"></script>
  * ============================================================================
  */
 (function () {
@@ -51,23 +51,25 @@
 
   // ==========================================================================
   // PRESETS (paleta derivada de script (2).js:123-128, afinada para global)
+  // v7: intensidades subidas para que el tinte se vea como FILTRO GENERAL
+  // (no solo un matiz sutil) — mismo lenguaje del overlay CSS 'color' original.
   // ==========================================================================
   var PRESETS = {
-    '2700': { hexNum: 0xFFCC5A, css: '#FFCC5A', intensity: 0.42, label: '2700K' },
-    '3000': { hexNum: 0xFFE3A3, css: '#FFE3A3', intensity: 0.28, label: '3000K' },
-    '4000': { hexNum: 0xFFFFFF, css: '#FFFFFF', intensity: 0.00, label: '4000K' },
-    '6000': { hexNum: 0xCBE9FF, css: '#CBE9FF', intensity: 0.30, label: '6000K' }
+    '2700': { hexNum: 0xFFCC5A, css: '#FFCC5A', intensity: 0.65, label: '2700K' },
+    '3000': { hexNum: 0xFFE3A3, css: '#FFE3A3', intensity: 0.45, label: '3000K' },
+    '4000': { hexNum: 0xFFFFFF, css: '#FFFFFF', intensity: 0.00, label: '4000K' }, // neutro = original
+    '6000': { hexNum: 0xCBE9FF, css: '#CBE9FF', intensity: 0.50, label: '6000K' }
   };
   var ORDER = ['2700', '3000', '4000', '6000'];
-  var TINT_SCALE = 0.55;      // atenuación global del lerp (evita sobresaturar)
-  var QUAD_OPACITY_SCALE = 0.18;
-  var QUAD_SIZE = 2.6;        // m a 0.62 m de la cabeza cubre ~130° (Quest ~110°)
+  var TINT_SCALE = 1.0;       // v7: lerp completo (antes 0.55) -> filtro general visible
+  var QUAD_OPACITY_SCALE = 0.35; // v7: quad de color en VR más notorio (antes 0.18)
+  var QUAD_SIZE = 3.2;        // m a 0.62 m de la cabeza cubre ~138° por ojo
   var QUAD_DIST = 0.62;
   var STORAGE_KEY = 'vrtemp';
   var SKIP_MATERIAL = /sky|cielo/i;   // materiales que NO se tintan
   // Botones del editor: acepta btn_2700 / boton-2700 / Btn 2700, etc.
   var BTN_ANCHORED = /^(?:btn|boton|botón)[-_ ]?(2700|3000|4000|6000)$/i;
-  var BTN_LOOSE = /(?:^|[^0-9])(2700|3000|4000|6000)(?:[^0-9]|$)/; // fallback sobre node.type
+  var BTN_LOOSE = /(?:^|[^0-9])(2700|3000|4000|6000)(?:[^0-9]|$)/; // fallback sobre node.type/name
   var STORE_LIMIT = 8; // máx. ancestros a revisar buscando el type del botón
 
   // ==========================================================================
@@ -370,25 +372,35 @@
 
   // ==========================================================================
   // CAPA B — QUAD TRANSLÚCIDO ANCLADO A LA CABEZA (solo XR)
+  // v7: es el equivalente WEBXR del overlay CSS 'mix-blend-mode: color' del
+  // body-end (div#temp-overlay de script (2).js). El DOM no se renderiza en
+  // el casco; este quad se dibuja delante de la cámara en AMBOS OJOS con
+  // depthTest/depthWrite desactivados, tiñendo toda la imagen (filtro general).
+  // NOTA HONESTA (B06): aproxima el blend 'color' con un velo de color
+  // translúcido; el blend exacto requeriría postproceso, inviable con la API.
+  // Se construye automáticamente al iniciar sesión XR (onSessionStart).
   // ==========================================================================
   function buildQuad() {
     if (quad || !getTHREE() || !xrScene) return;
     try {
-      var geo = new T3.PlaneGeometry(QUAD_SIZE, QUAD_SIZE);
-      var mat = new T3.MeshBasicMaterial({
+      var T = getTHREE();
+      var geo = new T.PlaneGeometry(QUAD_SIZE, QUAD_SIZE);
+      var mat = new T.MeshBasicMaterial({
         color: PRESETS['2700'].hexNum,
         transparent: true,
         opacity: 0,
         depthTest: false,
         depthWrite: false,
-        side: T3.DoubleSide,
-        toneMapped: false
+        side: T.DoubleSide,
+        toneMapped: false,
+        blending: T.NormalBlending
       });
-      quad = new T3.Mesh(geo, mat);
+      quad = new T.Mesh(geo, mat);
       quad.renderOrder = 999;
+      quad.frustumCulled = false; // siempre visible aunque la cámara mire otro lado
       quad.visible = false;
       xrScene.add(quad);
-      log('quad de temperatura creado');
+      log('quad de temperatura (filtro VR) creado');
     } catch (e) { quad = null; warn('quad no creado:', e); }
   }
 
@@ -613,7 +625,17 @@
 
     xrSession.addEventListener('selectstart', onSelectStart);
     xrSession.requestAnimationFrame(xrTick);
-    log('sesión XR detectada; reconstruyendo UI de temperatura');
+
+    // v7: construir la UI VR de temperatura AL ENTRAR al casco:
+    //  - Capa B: quad de filtro general (equivale al overlay CSS en VR)
+    //  - VÍA 3: esferas de temperatura VR (respaldo garantizado a btn_*)
+    if (!ensureScene()) {
+      warn('sin escena interna: quad de filtro y esferas VR de temperatura no construidos');
+    } else {
+      buildQuad();
+      buildTempSpheres();
+    }
+    log('sesión XR detectada; UI de temperatura VR construida/verificada');
   }
 
   function ensureScene() {

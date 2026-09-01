@@ -1,6 +1,6 @@
-/**
+﻿/**
  * ============================================================================
- *  VR-COMPAT para Shapespark — WebXR (Meta Quest 2/3/Pro) — v10 VR-only
+ *  VR-COMPAT para Shapespark — WebXR (Meta Quest 2/3/Pro) — v11 VR-only
  * ============================================================================
  *  En VR genera ESFERAS 3D propias (no dependen de extensiones del editor)
  *  que CAMBIAN DE VISTA/INTENSIDAD al clicar:
@@ -21,7 +21,7 @@
  *  viewer.getCameraPosition() (position-lock).
  *
  *  Integración (body-end.html VR-only):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-compat.js?v=10"></script>
+ *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-compat.js?v=11"></script>
  * ============================================================================
  */
 (function () {
@@ -499,20 +499,23 @@
   }
 
   // ==========================================================================
-  // BLOQUEO DE VISTA POR POSICIÓN (mitigación desktop v2).
-  // El clic nativo en el modelo dispara el "caminar hacia el punto clicado"
-  // del viewer; nuestro teleport (maxTime=0) es instantáneo pero esa
-  // navegación continúa. NO existe API documentada para cancelarla, así que
-  // en vez de re-teleportar a tiempos fijos, MONITOREAMOS la posición real de
-  // la cámara (Viewer.getCameraPosition, API verificada) y si se aleja del
-  // punto de la vista > UMBRAL, re-teleportamos al instante (cada ~60 ms).
-  // Resultado: el desplazamiento visible se reduce a <100 ms (imperceptible).
-  // En sesión XR no se aplica (no hay click-to-move de ratón).
+  // BLOQUEO DE VISTA POR POSICIÓN (mitigación v2 + v11).
+  // El clic nativo (desktop: "caminar hacia el punto clicado"; VR/Quest:
+  // teleport nativo de la mira central) compite con nuestro switchToView.
+  // NO existe API documentada para cancelarlo, así que MONITOREAMOS la
+  // posición real de la cámara (Viewer.getCameraPosition, API verificada) y
+  // si se aleja del punto de la vista > UMBRAL, re-teleportamos al instante.
+  // v11: AHORA TAMBIÉN se aplica en sesión XR (antes se omitía porque en el
+  // Quest no hay click-to-move de ratón, pero SÍ hay teleport nativo de la
+  // mira + gatillo sobre el nodo). En XR el umbral es más amplio (0.25 m)
+  // para no interferir con el movimiento normal de la cabeza.
   // NOTA HONESTA: mitigación pragmática, no cancelación real de la navegación.
   // ==========================================================================
-  var LOCK_UMBRAL = 0.2;    // m de desvío permitido antes de re-teleportar
-  var LOCK_MAX_MS = 2500;   // ventana máxima del lock tras el clic
-  var LOCK_INTERVAL = 60;   // ms entre comprobaciones
+  var LOCK_UMBRAL = 0.2;      // m de desvío permitido (desktop) antes de re-teleportar
+  var LOCK_UMBRAL_XR = 0.25;  // m (VR): compensa el teleport nativo sin pelear con la cabeza
+  var LOCK_MAX_MS = 2500;     // ventana máxima del lock tras el clic
+  var LOCK_INTERVAL = 60;     // ms entre comprobaciones
+  var LOCK_INTERVAL_XR = 40;  // ms en VR (reacción más rápida al teleport nativo)
   var viewLockTimer = null;
   var viewLockTarget = null; // {x,y,z} posición de la vista tras teleport
   var viewLockName = null;
@@ -525,7 +528,6 @@
   }
 
   function lockView(v) {
-    if (xrSession) { log('lockView omitido (sesión XR activa):', v); return; }
     if (!viewer || typeof viewer.getCameraPosition !== 'function') {
       log('lockView no disponible (sin getCameraPosition) para:', v);
       return;
@@ -542,9 +544,11 @@
     viewLockName = v;
     viewLockStart = Date.now();
     viewLockReasserts = 0;
-    log('lockView -> anclando vista', v, 'en', viewLockTarget.x.toFixed(2),
-        viewLockTarget.y.toFixed(2), viewLockTarget.z.toFixed(2));
-    viewLockTimer = setInterval(lockTick, LOCK_INTERVAL);
+    var modo = xrSession ? 'VR' : 'desktop';
+    log('lockView' + (xrSession ? ' (VR)' : '') + ' -> anclando vista', v, 'en',
+        viewLockTarget.x.toFixed(2), viewLockTarget.y.toFixed(2), viewLockTarget.z.toFixed(2),
+        '| modo:', modo);
+    viewLockTimer = setInterval(lockTick, xrSession ? LOCK_INTERVAL_XR : LOCK_INTERVAL);
   }
 
   function lockTick() {
@@ -558,8 +562,9 @@
     var p = null;
     try { p = viewer.getCameraPosition(); } catch (e) { return; }
     if (!p) return;
+    var umbral = xrSession ? LOCK_UMBRAL_XR : LOCK_UMBRAL;
     var d = posDist(p, viewLockTarget);
-    if (d > LOCK_UMBRAL) {
+    if (d > umbral) {
       viewLockReasserts++;
       log('lockView -> desviado', d.toFixed(3), 'm; re-teleport a', viewLockName);
       try {
