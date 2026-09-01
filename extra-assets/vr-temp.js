@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ============================================================================
  *  VR-TEMP para Shapespark — Temperatura de color GLOBAL (WebXR + desktop)
  * ============================================================================
@@ -6,14 +6,9 @@
  *
  *  Activación (tres vías, simultáneas):
  *   1) Botones 3D del editor con Type = btn_2700 | btn_3000 | btn_4000 | btn_6000
- *      -> viewer.onNodeTypeClicked. La documentación no garantiza múltiples
- *      oyentes simultáneos, así que este registro ÚNICO también REPLICA el
- *      manejo de esferas de intensidad del editor de vr-compat.js
- *      (node.type = vista -> viewer.switchToView(vista, 0)). Así los clicks
- *      de intensidad funcionan tanto si el viewer soporta un solo oyente
- *      (el nuestro reemplaza al de vr-compat y lo replica) como si soporta
- *      varios (vr-compat también responde; el doble switchToView a la MISMA
- *      vista con maxTime=0 es inofensivo).
+ *      -> viewer.onNodeTypeClicked (SÓLO temperatura; el manejo de esferas de
+ *      intensidad/switchToView es ÚNICO de vr-compat.js para evitar el doble
+ *      disparo verificado en consola).
  *   2) Botones DOM .temp-btn (desktop) -> reemplaza SOLO su onclick anterior
  *      (el overlay CSS). Sliders de intensidad y .reset-btn de zonas: intactos.
  *   3) Fallback VR: 4 esferas 3D auto-generadas SOLO dentro del casco
@@ -34,7 +29,7 @@
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
  *  Integración (body-end.html, DESPUÉS de vr-compat.js):
- *    <script src="extra-assets/vr-temp.js?v=1"></script>
+ *    <script src="extra-assets/vr-temp.js?v=5"></script>
  * ============================================================================
  */
 (function () {
@@ -139,18 +134,31 @@
       else { warn('getEditableMaterials no disponible en este viewer'); }
     } catch (e) { warn('getEditableMaterials error:', e); }
 
+    log('storeOriginals -> total editables reportados:', mats.length,
+        '| con nombre:', mats.filter(function (m) { return m && m.name; }).length);
+
     var missingBase = 0;
+    var skippedSky = 0;
+    var cloneFails = 0;
     for (var i = 0; i < mats.length; i++) {
       var m = mats[i];
       if (!m || !m.name) continue;
-      if (SKIP_MATERIAL.test(m.name)) continue;
+      if (SKIP_MATERIAL.test(m.name)) { skippedSky++; continue; }
       if (!m.baseColor) { missingBase++; continue; }
       if (originals[m.name]) continue;
-      try { originals[m.name] = m.baseColor.clone(); } catch (e) { /* clone no disp. */ }
+      try { originals[m.name] = m.baseColor.clone(); }
+      catch (e) { cloneFails++; warn('storeOriginals -> clone FALLÓ en material:', m.name, '-', e); }
     }
     originalsSaved = true;
-    log('materiales originales guardados:', Object.keys(originals).length,
-        missingBase ? ('(sin baseColor: ' + missingBase + ')') : '');
+    var savedCount = Object.keys(originals).length;
+    log('materiales originales guardados:', savedCount,
+        '| omitidos (sky):', skippedSky,
+        missingBase ? ('| sin baseColor: ' + missingBase) : '',
+        cloneFails ? ('| clone con error: ' + cloneFails) : '');
+    if (savedCount === 0) {
+      warn('storeOriginals -> 0 originales guardados: la temperatura NO podrá aplicarse.');
+      warn('¿setAllMaterialsEditable() se llamó ANTES de cargar la escena? (ver init)');
+    }
 
     if (pendingTemp) {
       var k = pendingTemp; pendingTemp = null;
@@ -173,6 +181,9 @@
     var k = p.intensity * TINT_SCALE;
 
     var changed = 0;
+    var fails = 0;
+    var firstErr = null;
+    var firstErrName = null;
     for (var name in originals) {
       if (!Object.prototype.hasOwnProperty.call(originals, name)) continue;
       var m = null;
@@ -181,7 +192,13 @@
       var o = originals[name];
       try {
         if (p.intensity === 0) {
-          m.baseColor.copy(o);
+          // RESTAURAR ORIGINAL por componentes (no .copy()): .copy es método de
+          // instancia THREE — si baseColor es objeto plano {r,g,b} lanza
+          // TypeError y el preset 4000K aplicaba a 0 materiales. La asignación
+          // directa funciona con cualquier representación.
+          m.baseColor.r = o.r;
+          m.baseColor.g = o.g;
+          m.baseColor.b = o.b;
         } else {
           // lerp MANUAL por componentes: evita mezclar instancias THREE distintas
           m.baseColor.r = o.r + (tint.r - o.r) * k;
@@ -189,16 +206,28 @@
           m.baseColor.b = o.b + (tint.b - o.b) * k;
         }
         changed++;
-      } catch (e) { /* material sin baseColor editable */ }
+      } catch (e) {
+        // DIAGNÓSTICO (captura el primer error sin spam): si un preset aplica a
+        // 0 materiales (p.ej. 4000K = neutro que usa baseColor.copy), aquí se ve
+        // el motivo exacto.
+        fails++;
+        if (!firstErr) { firstErr = e; firstErrName = name; }
+      }
+    }
+    if (fails > 0) {
+      warn('materiales con error al aplicar', key, ':', fails,
+           '| primer error en "' + firstErrName + '":',
+           firstErr && firstErr.message ? firstErr.message : firstErr);
     }
 
-    try { viewer.requestFrame(); } catch (e) { /* no crítico */ }
+    try { viewer.requestFrame(); } catch (e) { warn('requestFrame FALLÓ:', e); }
 
     updateDomActive(key);
     persist(key);
     updateQuad(p);
     vrFeedback();
-    log('temperatura aplicada:', key, '(', p.label, ') materiales:', changed);
+    log('temperatura aplicada:', key, '(', p.label, ') materiales:', changed,
+        fails > 0 ? ('con ' + fails + ' fallos') : '');
   }
 
   function resetTemp() { applyTemp('4000'); } // 4000K = neutro = originales
@@ -236,40 +265,61 @@
     return null;
   }
 
-  // Vistas de intensidad (de ZONES_CONFIG en vr-compat.js:34-103) para el
-  // respaldo del manejo de esferas del editor (ver wireEditorButtons).
-  var INTENSITY_BASE_VIEWS = ['sala_de_descanso', 'sala de descanso', 'panel_cocina',
-    'coworking_marketing', 'coworking_diseño', 'sala_de_juntas', 'sala de juntas',
-    'oficina_contabilidad', 'circulacion_vertical', 'privado_1', 'privado_2', 'Intro'];
-  var INTENSITY_SUFFIX_RE = /_(10|40|60|80|100)$/;
-
-  function isIntensityViewType(type) {
-    if (!type || typeof type !== 'string') return false;
-    if (INTENSITY_SUFFIX_RE.test(type)) return true;
-    return INTENSITY_BASE_VIEWS.indexOf(type) !== -1;
+  // ==========================================================================
+  // VÍA 1 — BOTONES 3D DEL EDITOR (btn_2700 .. btn_6000)
+  // ==========================================================================
+  function keyFromType(type) {
+    if (!type || typeof type !== 'string') return null;
+    var m = type.match(BTN_ANCHORED);
+    if (m) return m[1];
+    m = type.match(BTN_LOOSE);
+    return m ? m[1] : null;
   }
 
+  function findBtnKey(node) {
+    var cur = node, hops = 0;
+    var chain = [];
+    while (cur && hops < STORE_LIMIT) {
+      chain.push(cur.type || '∅');
+      var key = keyFromType(cur.type);   // propiedad documentada: node.type
+      if (key) return key;
+      if (cur.parent) cur = cur.parent;  // propiedad documentada: node.parent
+      else break;
+      hops++;
+    }
+    // DIAGNÓSTICO: si el clic NO fue un botón de temperatura, la cadena ayuda
+    // a ver qué types recorre el findBtnKey (para detectar botones mal nombrados).
+    log('findBtnKey -> sin key; tipos visitados:', chain.join(' | '));
+    return null;
+  }
+
+  // COMPATIBILIDAD (fix doble-clic): los clics 3D se registran en el DISPATCHER
+  // ÚNICO de vr-compat.js (VRCOMPAT.onNodeClick) para que esferas de intensidad
+  // y botones de temperatura convivan sin pisarse ni duplicarse. Solo si
+  // vr-compat no está presente se cae a un onNodeTypeClicked propio.
   function wireEditorButtons() {
+    var handler = function (node) {
+      if (!node) return;
+      var key = findBtnKey(node);
+      if (key) {
+        log('botón de temperatura 3D detectado ->', key, '| (aplicando)');
+        applyTemp(key);
+        return true; // click de temperatura: no toca intensidades
+      }
+    };
+
+    if (window.VRCOMPAT && typeof window.VRCOMPAT.onNodeClick === 'function') {
+      window.VRCOMPAT.onNodeClick(handler);
+      log('clicks 3D registrados en dispatcher compartido (VRCOMPAT.onNodeClick)');
+      return;
+    }
     if (typeof viewer.onNodeTypeClicked !== 'function') {
       warn('onNodeTypeClicked no disponible; usarás fallback de esferas VR');
       return;
     }
-    // Registro ÚNICO con doble función (ver cabecera):
-    //  (a) temperatura: type btn_2700..btn_6000 (o ancestros) -> applyTemp
-    //  (b) respaldo de intensidades: type = nombre de vista -> switchToView(v,0)
-    //      (replica el manejo de esferas del editor de vr-compat.js por si el
-    //      viewer solo soporta un oyente de clicks; idempotente si hay varios).
     try {
-      viewer.onNodeTypeClicked(function (node) {
-        if (!node) return;
-        var key = findBtnKey(node);
-        if (key) { applyTemp(key); return true; } // click de temperatura: no toca intensidades
-        var t = node.type;
-        if (isIntensityViewType(t)) {
-          try { viewer.switchToView(t, 0); } catch (e) { /* sin esa vista */ }
-        }
-      });
-      log('oyente de clicks 3D registrado (temperatura btn_* + respaldo de vistas)');
+      viewer.onNodeTypeClicked(handler);
+      log('oyente de clicks 3D propio (fallback, solo temperatura btn_*)');
     } catch (e) { warn('onNodeTypeClicked error:', e); }
   }
 
@@ -282,13 +332,18 @@
     domWired = true;
 
     var btns = document.querySelectorAll('.temp-btn');
+    if (btns.length === 0) {
+      warn('wireDomButtons -> 0 botones .temp-btn en el DOM: los botones de ' +
+           'temperatura de desktop NO funcionarán (¿el body-end no tiene los paneles?)');
+    }
     for (var i = 0; i < btns.length; i++) {
       (function (btn) {
         // Reemplaza onclick (overlay CSS anterior) por el sistema global.
         // Solo afecta a .temp-btn; los sliders quedan intactos.
         btn.onclick = function () {
           var t = btn.getAttribute('data-temp') || btn.dataset && btn.dataset.temp;
-          if (t) applyTemp(t);
+          if (t) { log('botón DOM .temp-btn clicado ->', t); applyTemp(t); }
+          else warn('botón .temp-btn sin data-temp (revisar HTML):', btn);
         };
       })(btns[i]);
     }
@@ -297,8 +352,9 @@
     var resets = document.querySelectorAll('.reset-btn');
     for (var j = 0; j < resets.length; j++) {
       // ADITIVO: conserva el reset de materiales por zona del script principal.
-      resets[j].addEventListener('click', function () { resetTemp(); });
+      resets[j].addEventListener('click', function () { log('reset-btn clicado'); resetTemp(); });
     }
+    log('botones .reset-btn cableados:', resets.length);
   }
 
   function updateDomActive(key) {

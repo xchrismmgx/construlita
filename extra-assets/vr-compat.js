@@ -149,10 +149,37 @@
   function getTHREE() { return window.THREE || null; }
 
   // ==========================================================================
+  // CLICK SHARED (Dispatcher único).
+  // Problema resuelto: vr-temp.js también necesita clics 3D (btn_2700..6000)
+  // y ANTES registraba su propio onNodeTypeClicked → doble disparo por clic y
+  // riesgo de que el viewer reemplace el listener. Ahora hay UN SOLO
+  // onNodeTypeClicked (éste), que resuelve esferas de intensidad Y reparte los
+  // clics a handlers externos registrados con VRCOMPAT.onNodeClick().
+  // ==========================================================================
+  var clickHandlers = [];
+
+  // Registra un handler externo de clics 3D (p.ej. el de temperatura de
+  // vr-temp.js). Si el handler devuelve true se considera click consumido.
+  function registerNodeClick(cb) {
+    if (typeof cb === 'function') clickHandlers.push(cb);
+  }
+
+  // Encuentra la vista de intensidad del nodo (propio + ancestros).
+  function findIntensityView(node) {
+    var cur = node, found = null;
+    for (var depth = 0; cur && depth < 8; depth++) {
+      var id = cur.type || cur.name || null;
+      if (id && INTENSITY_VIEWS[id]) { found = id; break; }
+      cur = cur.parent || null;
+    }
+    return found;
+  }
+
+  // ==========================================================================
   // ESFERAS CREADAS EN EL EDITOR (Camino A).
   // Cada esfera que TÚ creas en Shapespark debe tener el TYPE (tipo de nodo)
   // igual al nombre de su vista destino, p.ej. 'sala_60'. Al clicar, el viewer
-  // dispara onNodeTypeClicked y hacemos switchToView(type, 0).
+  // dispara onNodeTypeClicked (único) y hacemos switchToView(type, 0).
   // Nota B06: .type es la propiedad documentada; .name no está en el README.
   // ==========================================================================
   function wireEditorSpheres() {
@@ -162,21 +189,39 @@
     }
     viewer.onNodeTypeClicked(function (node, point, distance) {
       if (!node) return;
-      // Busca el nombre de vista en el nodo clicado y en sus ancestros
-      // (por si la esfera es hija de un grupo con el nombre de la vista).
-      var found = null;
-      var cur = node;
-      for (var depth = 0; cur && depth < 8; depth++) {
-        var id = cur.type || cur.name || null;
-        if (id && INTENSITY_VIEWS[id]) { found = id; break; }
+
+      // DIAGNÓSTICO: cadena completa type/name del nodo y sus ancestros
+      // (para saber exactamente qué se clicó y por qué coincide o no).
+      var chainTypes = [], chainNames = [], cur = node;
+      for (var cDepth = 0; cur && cDepth < 8; cDepth++) {
+        chainTypes.push(cur.type || '∅');
+        chainNames.push(cur.name || '∅');
         cur = cur.parent || null;
       }
+      log('click 3D -> types:', chainTypes.join(' | '), '| names:', chainNames.join(' | '));
+
+      // 1) Esferas de intensidad (este módulo)
+      var found = findIntensityView(node);
       if (found) {
-        log('Esfera pulsada -> vista:', found);
-        viewer.switchToView(found, 0);
+        log('Esfera de intensidad MATCH -> vista:', found);
+        try {
+          viewer.switchToView(found, 0);
+          log('switchToView OK:', found);
+        } catch (e) {
+          warn('switchToView FALLÓ para:', found, '-', e && e.message ? e.message : e);
+        }
+        lockView(found); // mitigación click-to-move (desktop)
+      } else {
+        log('click 3D -> sin match de intensidad (ningún type/name está en INTENSITY_VIEWS)');
+      }
+
+      // 2) Handlers externos (vr-temp: botones de temperatura btn_*)
+      for (var i = 0; i < clickHandlers.length; i++) {
+        try { clickHandlers[i](node, point, distance); }
+        catch (e) { warn('handler externo de clic FALLÓ (índice ' + i + '):', e && e.message ? e.message : e); }
       }
     });
-    log('Esferas del editor cableadas vía onNodeTypeClicked (type/name = nombre de vista).');
+    log('Dispatcher de clics 3D cableado (intensidades + handlers externos). Handlers:', clickHandlers.length);
   }
 
   // ==========================================================================
@@ -220,7 +265,12 @@
     var views = activeZone ? activeZone.sliderViews : [];
     var labs = activeZone ? activeZone.viewLabels : [];
     var n = views.length;
-    if (n === 0) { log('Zona sin vistas de intensidad; no se crean esferas.'); return false; }
+    if (n === 0) {
+      warn('Zona sin vistas de intensidad; no se crean esferas. activeZone=',
+           activeZone ? activeZone.title : 'null');
+      return false;
+    }
+    log('buildVRSpheres -> zona:', activeZone && activeZone.title, '| vistas:', views.join(', '));
 
     var totalW = (n - 1) * SPHERE_CFG.spacing;
     var startX = -totalW / 2;
@@ -354,19 +404,56 @@
     var src = ev.inputSource;
     if (!src.targetRaySpace || !ev.frame) return;
     var pose = ev.frame.getPose(src.targetRaySpace, refSpace);
-    if (!pose) return;
+    if (!pose) { warn('selectstart sin pose del mando'); return; }
     var m = pose.transform.matrix;
     var ox = m[3], oy = m[7], oz = m[11];
     var dx = -m[2], dy = -m[6], dz = -m[10];
     var hit = raycastSpheres(ox, oy, oz, dx, dy, dz);
-    if (!hit) return;
+    if (!hit) { log('selectstart -> rayo NO toca ninguna esfera VR'); return; }
+    log('selectstart -> esfera VR tocada:', hit.sphere.view);
     handleSphere(hit.sphere);
   }
 
   function handleSphere(s) {
-    if (!s || !s.view) return;
-    log('Esfera -> switchToView:', s.view);
-    viewer.switchToView(s.view, 0); // 0 = instantáneo
+    if (!s || !s.view) { warn('handleSphere sin vista'); return; }
+    var v = s.view;
+    log('Esfera VR -> switchToView:', v);
+    try {
+      viewer.switchToView(v, 0); // 0 = instantáneo
+      log('switchToView OK (esfera VR):', v);
+    } catch (e) {
+      warn('switchToView FALLÓ (esfera VR):', v, '-', e && e.message ? e.message : e);
+    }
+    lockView(v);
+  }
+
+  // ==========================================================================
+  // BLOQUEO DE VISTA (mitigación desktop).
+  // El clic nativo en el modelo también dispara el "caminar hacia el punto
+  // clicado" del viewer; tras nuestro teleport la cámara sigue avanzando hacia
+  // la esfera. NO existe API documentada para cancelar esa navegación, así que
+  // re-afirmamos switchToView(v, 0) unas fracciones después para devolver la
+  // cámara a la vista (la navegación nativa termina en ~1.2-2s).
+  // En sesión XR no se aplica (no hay click-to-move de ratón).
+  // NOTA HONESTA: es una mitigación pragmática, no una cancelación real.
+  // ==========================================================================
+  var viewLockTimers = [];
+
+  function lockView(v) {
+    if (xrSession) { log('lockView omitido (sesión XR activa):', v); return; }
+    log('lockView -> re-afirmando', v, 'a los 400/900/1500ms (anti click-to-move)');
+    clearViewLock();
+    [400, 900, 1500].forEach(function (ms) {
+      viewLockTimers.push(setTimeout(function () {
+        try { if (viewer) viewer.switchToView(v, 0); }
+        catch (e) { warn('lockView re-afirmación FALLÓ a los', ms, 'ms:', e && e.message ? e.message : e); }
+      }, ms));
+    });
+  }
+
+  function clearViewLock() {
+    viewLockTimers.forEach(clearTimeout);
+    viewLockTimers = [];
   }
 
   // ==========================================================================
@@ -463,16 +550,24 @@
         ZONES_CONFIG.forEach(function (z) {
           if (z.triggerViews.indexOf(viewName) !== -1) activeZone = z;
         });
+        log('Vista activa:', viewName,
+            '-> zona:', activeZone ? activeZone.title : 'SIN ZONA (no está en ZONES_CONFIG)');
         if (vr.ready && xrScene) buildVRSpheres(); // reconstruye por zona
       });
-    } catch (e) {}
+    } catch (e) {
+      warn('onViewSwitchDone no se pudo registrar:', e && e.message ? e.message : e);
+    }
   }
 
   window.VRCOMPAT = {
     state: function () {
       return { viewer: !!viewer, scene: !!xrScene, session: !!xrSession,
-               vrReady: vr.ready, zone: activeZone && activeZone.title };
+               vrReady: vr.ready, zone: activeZone && activeZone.title,
+               clickHandlers: clickHandlers.length };
     },
+    // Registra un handler externo de clics 3D (usado por vr-temp.js para
+    // sus botones btn_2700..btn_6000). Un solo onNodeTypeClicked compartido.
+    onNodeClick: registerNodeClick,
     labels: VRLABELS,
     sceneOffset: SCENE_OFFSET,
     forceBuild: function () { if (xrScene && !vr.ready) buildVRSpheres(); }
