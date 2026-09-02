@@ -46,7 +46,7 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 23 (v23) — QUAD per-eye como vía PRIMARIA (determinista) + shader como refuerzo');
+  log('versión 24 (v24) — quad al llegar la escena + sonda de materiales (¿qué son los 176?)');
 
   // ==========================================================================
   // PRESETS — PALETA CALIBRADA del body-end de ejemplo (.temp-btn):
@@ -220,6 +220,7 @@
   var FILTER_RETRY_TIMER = null;
   var FILTER_RETRY_ATTEMPTS = 0;
   var LAST_EDITABLE_COUNT = -1; // v21: log de getEditableMaterials solo al cambiar
+  var MATERIAL_PROBE_DONE = false; // v24: sonda de materiales (1 sola vez)
 
   // ==========================================================================
   // v20: FUENTES DE MATERIALES. El build publicado devuelve 0 en la API
@@ -311,18 +312,12 @@
     var rejected = 0;
     for (var i = 0; i < mats.length; i++) {
       var m = mats[i];
-      // v21: BUG REAL DE CAMPO — el guard anterior exigía
-      // `typeof m.onBeforeCompile === 'function'`, pero en three.js el
-      // onBeforeCompile por defecto es NULL (no una función), así que los
-      // 149 materiales editables (tus logs: getEditableMaterials -> 149)
-      // se DESCARTABAN y el filtro quedaba en 'shader: 0 mat'. Ahora se acepta
-      // cualquier material (isMaterial o propiedad onBeforeCompile) y la
-      // asignación de nuestro wrapper funciona aunque el original sea null.
+      // v21: se acepta cualquier material three (aunque onBeforeCompile sea
+      // null). v24: se acepta CUALQUIER objeto — patchear un objeto no-three
+      // es inofensivo (nadie lo compila) y maximiza la probabilidad de
+      // alcanzar los materiales reales del viewer. La SONDA (abajo) revela
+      // qué son los objetos rechazados por otras vías.
       if (!m || typeof m !== 'object') { rejected++; continue; }
-      if (m.isMaterial !== true &&
-          typeof m.onBeforeCompile !== 'function' &&
-          typeof m.onBeforeCompile !== 'undefined' &&
-          m.onBeforeCompile !== null) { rejected++; continue; }
       if (m.__vrtempPatched && m.onBeforeCompile === m.__vrtempWrapper) continue;
       m.__vrtempPatched = true;
 
@@ -363,6 +358,22 @@
       // syncFilterColor (evita doble multiplicación).
     } else if (mats.length > 0) {
       log('filtro shader: ' + mats.length + ' materiales recibidos pero NINGUNO parcheable (isMaterial=false?)');
+      // v24: SONDA — ¿qué son estos objetos? (una sola vez, primeros 3)
+      if (!MATERIAL_PROBE_DONE) {
+        MATERIAL_PROBE_DONE = true;
+        for (var p = 0; p < Math.min(3, mats.length); p++) {
+          var pm = mats[p];
+          var det = '?';
+          try {
+            det = 'ctor=' + (pm.constructor && pm.constructor.name) +
+                  ' | isMaterial=' + pm.isMaterial +
+                  ' | oBC=' + typeof pm.onBeforeCompile +
+                  ' | type=' + pm.type +
+                  ' | keys=' + Object.keys(pm).slice(0, 14).join(',');
+          } catch (e) { det = '(sin keys legibles)'; }
+          log('SONDA material[' + p + ']: ' + det);
+        }
+      }
     }
     return patchedNow;
   }
@@ -1156,14 +1167,16 @@
       else if (++sessTries > 60) clearInterval(sessWatch);
     }, 1000);
 
-    // v20: cuando vr-compat capture la escena (primer render), re-sincronizar
-    // el filtro por si el clic ocurrió antes de que llegara la captura.
+    // v20/v24: cuando vr-compat capture la escena — re-sincronizar el filtro
+    // Y construir el QUAD (vía primaria) si ya hay temperatura activa.
     if (window.VRCOMPAT && typeof window.VRCOMPAT.onSceneCapture === 'function') {
       window.VRCOMPAT.onSceneCapture(function () {
         log('aviso captura de escena (vr-compat) -> re-sincronizando filtro');
         patchMaterialsFilter();
-        if (activeTemp) {
-          setTimeout(function () { updateFilterUniforms(CURRENT_FILTER); }, 60);
+        if (activeTemp && PRESETS[activeTemp]) {
+          ensureFilterReady();
+          if (quad) updateQuad(PRESETS[activeTemp]);
+          setTimeout(function () { syncFilterColor(); }, 60);
         }
       });
     }
