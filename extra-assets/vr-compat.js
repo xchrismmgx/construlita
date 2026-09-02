@@ -73,7 +73,7 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 20 (v20) — captura de materiales vía render + sondas viewer/nodo');
+  log('versión 21 (v21) — captura de materiales vía render + sondas viewer/nodo');
 
   // ==========================================================================
   // v19: CAPTURA FIABLE DE LA SESIÓN XR.

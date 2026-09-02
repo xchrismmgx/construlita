@@ -46,7 +46,7 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 20 (v20) — materiales desde captura de render + re-sync + quad solo respaldo');
+  log('versión 21 (v21) — FIX: parcheo de materiales con onBeforeCompile null + re-wrap si el viewer lo reemplaza');
 
   // ==========================================================================
   // PRESETS — PALETA CALIBRADA del body-end de ejemplo (.temp-btn):
@@ -217,6 +217,7 @@
   var CURRENT_FILTER = { r: 1, g: 1, b: 1 }; // color activo (blanco = sin filtro)
   var FILTER_RETRY_TIMER = null;
   var FILTER_RETRY_ATTEMPTS = 0;
+  var LAST_EDITABLE_COUNT = -1; // v21: log de getEditableMaterials solo al cambiar
 
   // ==========================================================================
   // v20: FUENTES DE MATERIALES. El build publicado devuelve 0 en la API
@@ -237,7 +238,10 @@
       for (var k in mats) { var v = mats[k]; if (v && typeof v === 'object') arr.push(v); }
       mats = arr;
     }
-    if (mats && mats.length) log('getEditableMaterials ->', mats.length, 'materiales');
+    if (mats && mats.length && mats.length !== LAST_EDITABLE_COUNT) {
+      LAST_EDITABLE_COUNT = mats.length;
+      log('getEditableMaterials ->', mats.length, 'materiales');
+    }
     return mats && mats.length ? mats : null;
   }
 
@@ -302,37 +306,65 @@
 
   function patchMaterialList(mats, src) {
     var patchedNow = 0;
+    var rejected = 0;
     for (var i = 0; i < mats.length; i++) {
       var m = mats[i];
-      if (!m || typeof m.onBeforeCompile !== 'function') continue;
-      if (m.__vrtempPatched) continue;
+      // v21: BUG REAL DE CAMPO — el guard anterior exigía
+      // `typeof m.onBeforeCompile === 'function'`, pero en three.js el
+      // onBeforeCompile por defecto es NULL (no una función), así que los
+      // 149 materiales editables (tus logs: getEditableMaterials -> 149)
+      // se DESCARTABAN y el filtro quedaba en 'shader: 0 mat'. Ahora se acepta
+      // cualquier material (isMaterial o propiedad onBeforeCompile) y la
+      // asignación de nuestro wrapper funciona aunque el original sea null.
+      if (!m || typeof m !== 'object') { rejected++; continue; }
+      if (m.isMaterial !== true &&
+          typeof m.onBeforeCompile !== 'function' &&
+          typeof m.onBeforeCompile !== 'undefined' &&
+          m.onBeforeCompile !== null) { rejected++; continue; }
+      if (m.__vrtempPatched && m.onBeforeCompile === m.__vrtempWrapper) continue;
       m.__vrtempPatched = true;
 
-      var prevOnBeforeCompile = m.onBeforeCompile;
-      m.onBeforeCompile = function (shader, renderer) {
+      // v21: si el viewer reemplazó nuestro wrapper (p.ej. recompile por
+      // cambio de vista/streaming), re-envolver la función actual.
+      var prevOnBeforeCompile = (typeof m.onBeforeCompile === 'function')
+        ? m.onBeforeCompile : null;
+      var wrapper = function (shader, renderer) {
         if (typeof prevOnBeforeCompile === 'function') {
           try { prevOnBeforeCompile.call(this, shader, renderer); } catch (e) {}
         }
         injectFilterIntoShader(this, shader);
       };
+      m.__vrtempWrapper = wrapper;
+      m.onBeforeCompile = wrapper;
 
       // B5: forzar programa único por material parcheado (patrón LUTVR).
-      // v20: key nueva (|VRTEMP20) — fuerza programas frescos tras actualizar
-      // el script (evita reutilizar el caché de programas de la v19).
+      // v21: key nueva (|VRTEMP21) — fuerza programas frescos.
       var prevCacheKey = m.customProgramCacheKey;
       m.customProgramCacheKey = function () {
         var base = '';
         try { if (typeof prevCacheKey === 'function') base = prevCacheKey.call(this); } catch (e) {}
-        return base + '|VRTEMP20';
+        return base + '|VRTEMP21';
       };
 
       try { m.needsUpdate = true; } catch (e) {}
       FILTER_PATCH_COUNT++;
       patchedNow++;
     }
+    if (rejected > 0) {
+      warn('materiales omitidos (no materiales three):', rejected, 'de', mats.length);
+    }
     if (patchedNow) {
       FILTER_PATCHED = true;
       log('filtro shader-injection preparado en', FILTER_PATCH_COUNT, 'materiales (fuente: ' + src + ')');
+      // v20: si el quad de refuerzo ya se construyó (captura llegó tarde) y
+      // ahora el shader filtra los materiales, el quad multiplicaría DOS veces
+      // (doble oscurecimiento) — ocultarlo.
+      if (quad) {
+        quad.visible = false;
+        log('filtro shader activo -> quad oculto (evita doble multiplicación)');
+      }
+    } else if (mats.length > 0) {
+      log('filtro shader: ' + mats.length + ' materiales recibidos pero NINGUNO parcheable (isMaterial=false?)');
     }
     return patchedNow;
   }
