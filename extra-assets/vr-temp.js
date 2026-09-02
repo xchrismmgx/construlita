@@ -46,7 +46,7 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 21 (v21) — FIX: parcheo de materiales con onBeforeCompile null + re-wrap si el viewer lo reemplaza');
+  log('versión 23 (v23) — QUAD per-eye como vía PRIMARIA (determinista) + shader como refuerzo');
 
   // ==========================================================================
   // PRESETS — PALETA CALIBRADA del body-end de ejemplo (.temp-btn):
@@ -63,7 +63,7 @@
     '6500': { hexNum: 0x98D9F5, css: '#98d9f5', k: 0.20, label: '6500K' }
   };
   var ORDER = ['2700', '3000', '4000', '6000', '6500'];
-  var QUAD_SIZE = 3.2;        // m a 0.62 m de la cabeza cubre ~138° por ojo
+  var QUAD_SIZE = 3.6;        // m a 0.62 m de la cabeza cubre ~142° por ojo (margen sobre FOV Quest ~110°)
   var QUAD_DIST = 0.62;
   var STORAGE_KEY = 'vrtemp';
   // Botones del editor: acepta btn_2700 / boton-2700 / Btn 2700 / Luz 2700K / "2700"
@@ -164,7 +164,9 @@
   // v14 Paso 1: candidatos por nombre en el viewer (casi gratis) antes del BFS.
   function findSceneByCandidates() {
     if (!viewer) return null;
-    var CAND = ['scene', 'threeScene', 'xrScene', 'renderer', 'camera'];
+    // v22: la sonda de vr-compat reveló que el viewer expone _scene/_renderer
+    // (con guion bajo) — incluirlos como candidatos.
+    var CAND = ['scene', '_scene', 'threeScene', 'xrScene', 'renderer', '_renderer', 'camera', '_camera'];
     for (var i = 0; i < CAND.length; i++) {
       try {
         var c = viewer[CAND[i]];
@@ -356,13 +358,9 @@
     if (patchedNow) {
       FILTER_PATCHED = true;
       log('filtro shader-injection preparado en', FILTER_PATCH_COUNT, 'materiales (fuente: ' + src + ')');
-      // v20: si el quad de refuerzo ya se construyó (captura llegó tarde) y
-      // ahora el shader filtra los materiales, el quad multiplicaría DOS veces
-      // (doble oscurecimiento) — ocultarlo.
-      if (quad) {
-        quad.visible = false;
-        log('filtro shader activo -> quad oculto (evita doble multiplicación)');
-      }
+      // v23: el quad NO se oculta: es la vía PRIMARIA (malla propia); su
+      // color activo lo controla updateQuad y el shader se pone neutro vía
+      // syncFilterColor (evita doble multiplicación).
     } else if (mats.length > 0) {
       log('filtro shader: ' + mats.length + ' materiales recibidos pero NINGUNO parcheable (isMaterial=false?)');
     }
@@ -416,31 +414,35 @@
     }
   }
 
+  // v23: sincroniza el color activo — si el QUAD multiplicativo está visible,
+  // el shader se queda NEUTRO (blanco) para no multiplicar dos veces; el
+  // efecto completo lo produce el quad (vía determinista, malla propia).
+  function syncFilterColor() {
+    if (quad && quad.visible) updateFilterUniforms({ r: 1, g: 1, b: 1 });
+    else updateFilterUniforms(CURRENT_FILTER);
+  }
+
   function applyTemp(key) {
     key = String(key);
     var p = PRESETS[key];
     if (!p) { warn('preset desconocido:', key); return; }
     activeTemp = key;
 
-    // v11/v12: filtro SHADER (principal, sin escena interna).
-    patchMaterialsFilter();
     var fh = p.filterHex || p.hexNum;   // 4000K: blanco = neutro
     var c = lerpWhiteTo(fh, p.k);
     CURRENT_FILTER.r = c.r; CURRENT_FILTER.g = c.g; CURRENT_FILTER.b = c.b;
-    updateFilterUniforms(c);
-    // Los materiales se recompilan el próximo frame; re-sync tras 100/500ms
-    // para asegurar que los uniforms recién creados reciban el color.
-    setTimeout(function () { updateFilterUniforms(CURRENT_FILTER); }, 100);
-    setTimeout(function () { updateFilterUniforms(CURRENT_FILTER); }, 500);
-    // v20: la captura de escena (hook de render de vr-compat) puede llegar
-    // justo después del clic (primer render); re-intentar el parcheo tarde.
-    setTimeout(function () {
-      patchMaterialsFilter();
-      updateFilterUniforms(CURRENT_FILTER);
-    }, 800);
-    // Refuerzo opcional: quad per-eye solo si la escena interna existe.
+
+    // v23: QUAD per-eye = vía PRIMARIA (es NUESTRA malla: si la escena se
+    // renderiza, nuestra malla también — no depende de materiales/shaders
+    // del viewer). El shader-injection queda como refuerzo gratuito.
+    patchMaterialsFilter();
     ensureFilterReady();
     if (quad) updateQuad(p);
+    syncFilterColor();
+    // Los materiales se recompilan el próximo frame; re-sync 100/500/800ms.
+    setTimeout(syncFilterColor, 100);
+    setTimeout(syncFilterColor, 500);
+    setTimeout(function () { patchMaterialsFilter(); syncFilterColor(); }, 800);
 
     log('FILTRO -> aplicando', key, '(' + p.label + ') k=', p.k,
         '| shader:', FILTER_PATCH_COUNT, 'mat | quad:', !!quad,
@@ -455,19 +457,18 @@
   // interna existe). El mecanismo principal es el shader, que no la necesita.
   function ensureFilterReady() {
     if (quad) return;
-    // v20: el quad multiplicaría DOS veces si el shader ya filtra (doble
-    // oscurecimiento: colorEscena × filtro × filtro) — solo se construye
-    // cuando el shader NO halló materiales.
-    if (FILTER_PATCH_COUNT > 0) {
-      log('filtro shader activo en', FILTER_PATCH_COUNT, 'materiales -> quad NO necesario');
-      return;
-    }
+    // v23: el quad se construye SIEMPRE que haya sesión XR + escena
+    // (vía determinista de malla propia). El shader ya no lo bloquea.
     if (!xrSession) {
-      log('filtro: sin sesión XR activa -> refuerzo quad solo DENTRO del casco (shader sí aplica)');
+      log('filtro: sin sesión XR activa -> el quad per-eye se construye DENTRO del casco');
       return;
     }
-    if (ensureScene()) { buildQuad(); }
-    else { log('filtro: escena interna no disponible; usando SOLO shader-injection'); }
+    if (ensureScene()) {
+      buildQuad();
+      if (quad && activeTemp && PRESETS[activeTemp]) updateQuad(PRESETS[activeTemp]);
+    } else {
+      log('filtro: escena interna no disponible; usando SOLO shader-injection');
+    }
   }
 
   function resetTemp() { applyTemp('4000'); } // 4000K = neutro (filtro blanco) = originales

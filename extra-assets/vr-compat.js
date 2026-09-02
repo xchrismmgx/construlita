@@ -34,7 +34,8 @@
   }
 
   var TAG = '[VR-COMPAT]';
-  var DIAG_MODE = /[?&]diag=1/.test(window.location.search);
+  // v22: tolera BOTH '?diag' y '?diag=1' (el usuario escribe '?diag' a secas).
+  var DIAG_MODE = /[?&]diag(?:=1)?(?:&|$)/.test(window.location.search);
 
   // ---------- Panel de diagnóstico en pantalla (Quest sin consola) ----------
   var diagEl = null;
@@ -73,7 +74,7 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 21 (v21) — captura de materiales vía render + sondas viewer/nodo');
+  log('versión 22 (v22) — escena vía viewer._scene + _renderer + diag tolerante');
 
   // ==========================================================================
   // v19: CAPTURA FIABLE DE LA SESIÓN XR.
@@ -160,11 +161,11 @@
     }
   }
 
-  function captureSceneFromRender(scene) {
+  function captureSceneFromRender(scene, label) {
     if (capturedScene === scene || !scene) return;
     capturedScene = scene;
     capturedMaterials = collectMaterials(scene);
-    log('ESCENA CAPTURADA vía render() — materiales recolectados:', capturedMaterials.length);
+    log('ESCENA CAPTURADA (' + (label || 'vía render()') + ') — materiales recolectados:', capturedMaterials.length);
     notifyCaptured();
   }
 
@@ -211,8 +212,12 @@
       }
     } catch (e) {}
     try {
-      if (viewer && viewer.renderer && typeof viewer.renderer.render === 'function') {
-        if (installRenderHook(viewer.renderer.render, viewer.renderer, 'viewer.renderer.render')) any = true;
+      // v22: tus logs revelaron que el viewer expone SU renderer como
+      // `_renderer` (con guion bajo) — el caso B anterior solo miraba
+      // `viewer.renderer` y por eso nunca capturaba.
+      var rend = (viewer && (viewer.renderer || viewer._renderer)) || null;
+      if (rend && typeof rend.render === 'function') {
+        if (installRenderHook(rend.render, rend, 'viewer._renderer.render')) any = true;
       }
     } catch (e) {}
     // Solo log real negativo si el hook global NUNCA se instaló (el retry
@@ -488,7 +493,7 @@
       }
       log('sonda viewer — proto:', chain.join(' <- ') || '(sin proto)');
     } catch (e) {}
-    ['scene', 'renderer', 'camera', 'cameraRig', 'xr', 'materials', 'nodes', 'root', 'container', 'three', 'webgl'].forEach(function (k) {
+    ['scene', '_scene', 'renderer', '_renderer', 'camera', '_camera', '_vrManager', '_controls', 'xr', 'materials', 'nodes', 'root', 'container', 'three', 'webgl'].forEach(function (k) {
       var v = null;
       try { v = viewer[k]; } catch (e) {}
       if (v != null) {
@@ -506,6 +511,15 @@
           '| getScene:', typeof viewer.getScene);
     } catch (e) {}
     installRenderHooks(); // caso B necesita el viewer
+
+    // v22: CAPTURA DIRECTA vía las propiedades privadas del viewer que
+    // reveló tu sonda v21 (viewer._scene / viewer._renderer existen).
+    // Mucho más fiable que esperar al hook del render.
+    try {
+      if (!capturedScene && viewer._scene && typeof viewer._scene.traverse === 'function') {
+        captureSceneFromRender(viewer._scene, 'viewer._scene');
+      }
+    } catch (e) { /* _scene con getter hostil */ }
   }
 
   // ==========================================================================
