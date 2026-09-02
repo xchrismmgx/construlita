@@ -74,7 +74,7 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 22 (v22) — escena vía viewer._scene + _renderer + diag tolerante');
+  log('versión 24 (v24) — reintentos de captura (_scene/_renderer) + sonda de materiales');
 
   // ==========================================================================
   // v19: CAPTURA FIABLE DE LA SESIÓN XR.
@@ -261,6 +261,37 @@
   }
 
   installRenderHooks(); // caso A (THREE global) lo antes posible; caso B al obtener el viewer
+
+  // ==========================================================================
+  // v24: RETRY DE CAPTURA — la escena `viewer._scene` no existe al inicio
+  // (tus logs v23: la captura solo se intentaba una vez, antes de que la
+  // escena existiera). Reintenta cada 1 s (20 veces) y re-intenta también el
+  // hook del renderer (_renderer puede aparecer tarde).
+  // ==========================================================================
+  var SCENE_CAPTURE_RETRIES = 0;
+
+  function retrySceneCapture() {
+    if (capturedScene || !viewer) return;
+    try {
+      var s = viewer._scene || null;
+      if (s && typeof s.traverse === 'function') {
+        captureSceneFromRender(s, 'viewer._scene');
+        log('captura directa OK: viewer._scene disponible (intento', SCENE_CAPTURE_RETRIES + ')');
+        return;
+      }
+    } catch (e) { /* getter hostil */ }
+    SCENE_CAPTURE_RETRIES++;
+    if (SCENE_CAPTURE_RETRIES % 5 === 1) {
+      log('viewer._scene aún no disponible (intento', SCENE_CAPTURE_RETRIES + ')');
+    }
+    installRenderHooks(); // caso B: _renderer puede aparecer tarde
+    if (SCENE_CAPTURE_RETRIES <= 20) setTimeout(retrySceneCapture, 1000);
+  }
+
+  function scheduleSceneCaptureRetry() {
+    if (capturedScene) return;
+    setTimeout(retrySceneCapture, 1000);
+  }
 
   // ==========================================================================
   // v20: HOOK DEL PROTOTIPO Material.onBeforeCompile.
@@ -1027,10 +1058,12 @@
     try { viewer = WALK.getViewer(); } catch (e) { viewer = null; }
     if (!viewer) { setTimeout(init, 150); return; }
     probeViewerInternals(); // v20: sonda de internals + hook caso B
+    scheduleSceneCaptureRetry(); // v24: reintentos de captura (la escena llega tarde)
 
     viewer.onSceneReadyToDisplay(function () {
       wireEditorSpheres(); // esferas creadas por ti en el editor (type = vista)
       watchXR();
+      scheduleSceneCaptureRetry(); // v24: al estar lista, _scene ya existe
     });
 
     // B2 (v13): lastViewName evita reconstruir las esferas VR en cada
