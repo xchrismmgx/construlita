@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ============================================================================
  *  VR-COMPAT para Shapespark — WebXR (Meta Quest 2/3/Pro) — v19 VR-only
  * ============================================================================
@@ -20,8 +20,8 @@
  *  viewer.onSceneReadyToDisplay(), viewer.onViewSwitchDone(),
  *  viewer.getCameraPosition() (position-lock).
  *
- *  Integración (body-end.html VR-only):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-compat.js?v=19"></script>
+ *  Integración (body-end.html VR-only, DESPUÉS de three.min.js): el body-end
+ *  carga este script con versión dinámica?v=NN de la URL de la escena.
  * ============================================================================
  */
 (function () {
@@ -73,7 +73,7 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 19 (v19) — captura de sesión XR (requestSession)');
+  log('versión 20 (v20) — captura de materiales vía render + sondas viewer/nodo');
 
   // ==========================================================================
   // v19: CAPTURA FIABLE DE LA SESIÓN XR.
@@ -106,6 +106,199 @@
   }
 
   installSessionCapture();
+
+  // ==========================================================================
+  // v20: CAPTURA DE MATERIALES SIN getEditableMaterials.
+  // Motivación (tus logs v19): en el build publicado getEditableMaterials()
+  // devuelve SIEMPRE 0 — el filtro shader de vr-temp.js se quedaba con
+  // 'shader: 0 mat' y nada se veía dentro del casco. Estrategia v20:
+  //   1) Envolvemos THREE.WebGLRenderer.prototype.render (caso A: el viewer
+  //      usa el THREE global de la página — el mismo que carga cdnjs) y
+  //      viewer.renderer.render (caso B: el viewer expone su renderer, aunque
+  //      sea de un THREE interno).
+  //   2) El primer render() recibe (escena, cámara): la escena REAL, que no
+  //      dependía de ninguna API editable.
+  //   3) Recorremos la escena y recolectamos TODOS los materiales
+  //      (isMaterial === true), cross-instancia (uuid).
+  //   4) vr-temp.js los consume vía VRCOMPAT.getSceneMaterials().
+  // Si el viewer usa un THREE propio sin exponer renderer, el log
+  // 'SIN captura por render' lo indica y entra el rescate por grafo del nodo
+  // (rescueSceneFromNode, en el dispatcher de clics) + las sondas.
+  // ==========================================================================
+  var capturedScene = null;
+  var capturedMaterials = [];
+  var captureCallbacks = [];
+  var CAPTURE_RESYNC_EVERY = 240; // re-escaneo de materiales cada N renders
+  var CAPTURE_FRAMES = 0;
+  var CAPTURE_PROBE_DONE = false;
+  var CAPTURE_GLOBAL_WRAPPED = false; // hook global instalado alguna vez (evita falso negativo en retries)
+
+  function collectMaterials(scene) {
+    var list = [];
+    var seen = {};
+    try {
+      scene.traverse(function (o) {
+        if (!o) return;
+        var ms = Array.isArray(o.material) ? o.material
+                 : (o.material ? [o.material] : []);
+        for (var i = 0; i < ms.length; i++) {
+          var m = ms[i];
+          if (!m || typeof m !== 'object' || m.isMaterial !== true) continue;
+          var id = m.uuid ? m.uuid : (m.id !== undefined ? 'id:' + m.id : null);
+          if (id != null && seen[id]) continue;
+          if (id != null) seen[id] = true;
+          list.push(m);
+        }
+      });
+    } catch (e) { /* escena de otro THREE */ }
+    return list;
+  }
+
+  function notifyCaptured() {
+    for (var i = 0; i < captureCallbacks.length; i++) {
+      try { captureCallbacks[i](capturedScene, capturedMaterials); } catch (e) {}
+    }
+  }
+
+  function captureSceneFromRender(scene) {
+    if (capturedScene === scene || !scene) return;
+    capturedScene = scene;
+    capturedMaterials = collectMaterials(scene);
+    log('ESCENA CAPTURADA vía render() — materiales recolectados:', capturedMaterials.length);
+    notifyCaptured();
+  }
+
+  function installRenderHook(fn, owner, label) {
+    if (typeof fn !== 'function' || !owner || owner.__vrtempWrapped) return false;
+    owner.__vrtempWrapped = true;
+    var orig = fn;
+    owner.render = function (scene, camera) {
+      try {
+        if (scene && typeof scene.traverse === 'function') {
+          if (!capturedScene) {
+            captureSceneFromRender(scene);
+          } else {
+            CAPTURE_FRAMES++;
+            if (CAPTURE_FRAMES >= CAPTURE_RESYNC_EVERY) {
+              CAPTURE_FRAMES = 0;
+              var fresh = collectMaterials(scene);
+              if (fresh.length !== capturedMaterials.length) {
+                capturedMaterials = fresh;
+                log('rescan render — materiales ahora:', capturedMaterials.length);
+                notifyCaptured();
+              }
+            }
+          }
+        }
+      } catch (e) { /* nunca romper el render */ }
+      return orig.apply(this, arguments);
+    };
+    log('hook de render instalado:', label);
+    return true;
+  }
+
+  function installRenderHooks() {
+    var any = false;
+    try {
+      var T = window.THREE;
+      if (T && T.WebGLRenderer && T.WebGLRenderer.prototype &&
+          typeof T.WebGLRenderer.prototype.render === 'function') {
+        if (installRenderHook(T.WebGLRenderer.prototype.render, T.WebGLRenderer.prototype,
+            'THREE.WebGLRenderer.prototype.render (three r' + (T.REVISION || '?') + ')')) {
+          any = true;
+          CAPTURE_GLOBAL_WRAPPED = true;
+        }
+      }
+    } catch (e) {}
+    try {
+      if (viewer && viewer.renderer && typeof viewer.renderer.render === 'function') {
+        if (installRenderHook(viewer.renderer.render, viewer.renderer, 'viewer.renderer.render')) any = true;
+      }
+    } catch (e) {}
+    // Solo log real negativo si el hook global NUNCA se instaló (el retry
+    // de la sonda no debe reportar falso negativo cuando ya está cubierto).
+    if (!any && !CAPTURE_GLOBAL_WRAPPED && !CAPTURE_PROBE_DONE) {
+      CAPTURE_PROBE_DONE = true;
+      log('SIN captura por render aún: ni THREE global ni viewer.renderer (¿THREE interno sin exponer?)');
+    }
+  }
+
+  // v20: rescate por GRAFO DEL NODO — si el nodo clicado arrastra la escena
+  // (node.scene, node.object3D.scene, node.mesh.scene o un ancestro con
+  // traverse()), se captura igual que por render. Se llama desde el
+  // dispatcher de clics. TODO acceso blindado (getters hostiles).
+  function rescueSceneFromNode(node) {
+    if (capturedScene || !node) return;
+    var cands = [];
+    try { cands.push(node.scene); } catch (e) {}
+    try { cands.push(node.object3D && node.object3D.scene); } catch (e) {}
+    try { cands.push(node.mesh && node.mesh.scene); } catch (e) {}
+    for (var i = 0; i < cands.length; i++) {
+      var s = cands[i];
+      if (s && s !== node && typeof s.traverse === 'function') {
+        captureSceneFromRender(s);
+        return;
+      }
+    }
+    var cur = null;
+    try { cur = node.parent || null; } catch (e) { return; }
+    var hops = 0;
+    while (cur && hops < 12 && !capturedScene) {
+      if (cur !== node && typeof cur.traverse === 'function') {
+        captureSceneFromRender(cur);
+        return;
+      }
+      var next = null;
+      try { next = cur.parent || null; } catch (e) { next = null; }
+      cur = next;
+      hops++;
+    }
+  }
+
+  installRenderHooks(); // caso A (THREE global) lo antes posible; caso B al obtener el viewer
+
+  // ==========================================================================
+  // v20: HOOK DEL PROTOTIPO Material.onBeforeCompile.
+  // Si el viewer usa el THREE global, TODA asignación de onBeforeCompile en
+  // CUALQUIER material (incluido su LUT nativo, si lo implementa vía shader)
+  // pasa por este accessor. Además, como el constructor de Material asigna
+  // `onBeforeCompile = null` al crear cada instancia, esa asignación también
+  // cae en el setter y se convierte en nuestra envoltura: al compilar, three
+  // encuentra la propiedad truthy y ejecuta la envoltura, que deriva a
+  // window.__VRTEMP_INJECT__ (definido por vr-temp.js) — el filtro se inyecta
+  // en CADA material que compile, SIN depender de listas de materiales.
+  // Idempotente: la inyección revisa `if (!shader.uniforms.uVRTEMP_FilterColor)`.
+  // ==========================================================================
+  function installMaterialProtoHook() {
+    var T = window.THREE;
+    if (!T || !T.Material || !T.Material.prototype) return;
+    var proto = T.Material.prototype;
+    if (proto.__vrtempMaterialHooked) return;
+    proto.__vrtempMaterialHooked = true;
+    try {
+      Object.defineProperty(proto, 'onBeforeCompile', {
+        configurable: true,
+        get: function () { return this.__vrtempStored || null; },
+        set: function (fn) {
+          var self = this;
+          var prev = (typeof fn === 'function') ? fn : null;
+          this.__vrtempStored = function (shader, renderer) {
+            if (typeof prev === 'function') {
+              try { prev.call(self, shader, renderer); } catch (e) {}
+            }
+            if (window.__VRTEMP_INJECT__) {
+              try { window.__VRTEMP_INJECT__(self, shader, renderer); } catch (e) {}
+            }
+          };
+        }
+      });
+      log('hook prototipo Material.onBeforeCompile instalado (three r' + (T.REVISION || '?') + ')');
+    } catch (e) {
+      warn('hook prototipo Material no instalado:', e && e.message ? e.message : e);
+    }
+  }
+
+  installMaterialProtoHook();
 
   if (DIAG_MODE) {
     window.addEventListener('error', function (e) {
@@ -270,6 +463,52 @@
   function getTHREE() { return window.THREE || null; }
 
   // ==========================================================================
+  // v20: SONDA DE INTERNALS (descubre API no documentada del build publicado).
+  // Genera logs ?diag=1 con las keys propias del viewer, su cadena de
+  // prototipos y propiedades candidatas (scene/renderer/camera/...). Con eso
+  // sabremos si hay un camino directo a la escena (p.ej. viewer.scene) o al
+  // renderer (viewer.renderer.render) sin depender de conjeturas.
+  // ==========================================================================
+  var PROBED_VIEWER = false;
+
+  function probeViewerInternals() {
+    if (PROBED_VIEWER || !viewer) return;
+    PROBED_VIEWER = true;
+    try {
+      var keys = Object.keys(viewer);
+      log('sonda viewer — keys propias (' + keys.length + '):', keys.slice(0, 30).join(', ') || '(ninguna)');
+    } catch (e) {}
+    try {
+      var chain = [], o = viewer, d = 0;
+      while (o && d < 6) {
+        o = Object.getPrototypeOf(o);
+        if (!o) break;
+        chain.push(o.constructor ? o.constructor.name : '?');
+        d++;
+      }
+      log('sonda viewer — proto:', chain.join(' <- ') || '(sin proto)');
+    } catch (e) {}
+    ['scene', 'renderer', 'camera', 'cameraRig', 'xr', 'materials', 'nodes', 'root', 'container', 'three', 'webgl'].forEach(function (k) {
+      var v = null;
+      try { v = viewer[k]; } catch (e) {}
+      if (v != null) {
+        var info = typeof v;
+        if (v.isScene) info += ' [isScene]';
+        if (typeof v.render === 'function') info += ' [render()]';
+        if (typeof v.traverse === 'function') info += ' [traverse()]';
+        log('sonda viewer.' + k + ':', info);
+      }
+    });
+    try {
+      log('sonda API — getEditableMaterials:', typeof viewer.getEditableMaterials,
+          '| setAllMaterialsEditable:', typeof viewer.setAllMaterialsEditable,
+          '| findMaterial:', typeof viewer.findMaterial,
+          '| getScene:', typeof viewer.getScene);
+    } catch (e) {}
+    installRenderHooks(); // caso B necesita el viewer
+  }
+
+  // ==========================================================================
   // CLICK SHARED (Dispatcher único).
   // Problema resuelto: vr-temp.js también necesita clics 3D (btn_2700..6000)
   // y ANTES registraba su propio onNodeTypeClicked → doble disparo por clic y
@@ -309,6 +548,7 @@
   }
 
   var INTENSITY_MATCHES = 0; // contador de matches (debug)
+  var CLICK_PROBES = 0;      // v20: sonda de nodo (máx. 5 clics)
 
   // ==========================================================================
   // ESFERAS CREADAS EN EL EDITOR (Camino A).
@@ -336,6 +576,31 @@
       }
       log('click 3D -> types:', chainTypes.join(' | '), '| names:', chainNames.join(' | '));
       log('click 3D -> normalizado:', chainNorm.join(' | '));
+
+      // v20: sonda del nodo (máx. 5 clics) — estructura interna del objeto
+      // clicado: dónde están material/mesh/scene (para el rescate si ni
+      // getEditableMaterials ni el hook de render dieron materiales).
+      if (CLICK_PROBES < 5) {
+        CLICK_PROBES++;
+        try {
+          var nk = Object.keys(node);
+          log('sonda nodo — keys (' + nk.length + '):', nk.slice(0, 30).join(', ') || '(ninguna)',
+              '| ctor:', (node.constructor && node.constructor.name) || '?');
+        } catch (e) {}
+        ['material', 'mesh', 'object3D', 'object3d', 'threeObject', 'scene', 'geometry', 'userData', 'node'].forEach(function (k) {
+          var v = null;
+          try { v = node[k]; } catch (e) {}
+          if (v != null) {
+            var info = typeof v;
+            if (v.isMaterial) info += ' [isMaterial]';
+            if (v.isMesh) info += ' [isMesh]';
+            if (v.isScene) info += ' [isScene]';
+            if (typeof v.traverse === 'function') info += ' [traverse()]';
+            log('sonda nodo.' + k + ':', info);
+          }
+        });
+      }
+      rescueSceneFromNode(node);
 
       // 1) Esferas de intensidad (este módulo)
       var found = findIntensityView(node);
@@ -747,6 +1012,7 @@
     var WALK = window.WALK || {};
     try { viewer = WALK.getViewer(); } catch (e) { viewer = null; }
     if (!viewer) { setTimeout(init, 150); return; }
+    probeViewerInternals(); // v20: sonda de internals + hook caso B
 
     viewer.onSceneReadyToDisplay(function () {
       wireEditorSpheres(); // esferas creadas por ti en el editor (type = vista)
@@ -786,6 +1052,17 @@
     // v19: acceso a la sesión XR capturada (vr-temp la necesita para sus
     // listeners de mando/gamepad; evita depender de getSession no estándar).
     getSession: function () { return capturedSession || xrSession || null; },
+    // v20: escena y materiales capturados por hook de render (fuente del
+    // filtro de temperatura cuando getEditableMaterials devuelve 0).
+    getSceneCapture: function () { return capturedScene || null; },
+    getSceneMaterials: function () {
+      if (capturedScene) {
+        var fresh = collectMaterials(capturedScene);
+        if (fresh.length) capturedMaterials = fresh;
+      }
+      return capturedMaterials.slice();
+    },
+    onSceneCapture: function (cb) { if (typeof cb === 'function') captureCallbacks.push(cb); },
     // Reenvío de logs al panel de diagnóstico en pantalla (?diag=1).
     diag: diagPush,
     labels: VRLABELS,

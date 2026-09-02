@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ============================================================================
  *  VR-TEMP para Shapespark — FILTRO DE COLOR GENERAL (WebXR) — v19
  * ============================================================================
@@ -19,8 +19,8 @@
  *     auto-generadas en el casco (2700→3000→4000→6000→6500).
  *
  *  Debug: window.VRTEMP.state() / VRTEMP.apply('2700') / VRTEMP.reset()
- *  Integración (body-end.html VR-only, DESPUÉS de vr-compat.js):
- *    <script src="https://raw.githack.com/xchrismmgx/construlita/main/extra-assets/vr-temp.js?v=19"></script>
+ *  Integración (body-end.html VR-only, DESPUÉS de vr-compat.js): versión
+ *  dinámica ?v=NN en la URL de la escena (NO hardcodear ?v=19 aquí).
  * ============================================================================
  */
 (function () {
@@ -46,7 +46,7 @@
   }
 
   // Sello de versión: PRIMERA línea de log (verifica caché al instante).
-  log('versión 19 (v19) — sesión capturada + X/Y + joystick + grip + teclas');
+  log('versión 20 (v20) — materiales desde captura de render + re-sync + quad solo respaldo');
 
   // ==========================================================================
   // PRESETS — PALETA CALIBRADA del body-end de ejemplo (.temp-btn):
@@ -215,28 +215,93 @@
   var FILTER_PATCHED = false;
   var FILTER_PATCH_COUNT = 0;
   var CURRENT_FILTER = { r: 1, g: 1, b: 1 }; // color activo (blanco = sin filtro)
+  var FILTER_RETRY_TIMER = null;
+  var FILTER_RETRY_ATTEMPTS = 0;
 
-  function patchMaterialsFilter() {
-    if (FILTER_PATCHED) return;
-    var mats = [];
-    // v15: REINTENTO AGRESIVO de setAllMaterialsEditable antes de pedir la
-    // lista — el viewer solo puebla los materiales editables si esta llamada
-    // ocurrió ANTES de cargar la escena; en el Quest a veces ganábamos tarde
-    // la carrera y getEditableMaterials devolvía 0 (tus logs).
-    try { if (viewer && typeof viewer.setAllMaterialsEditable === 'function') viewer.setAllMaterialsEditable(); } catch (e) { /* noop */ }
-    try {
-      if (viewer && typeof viewer.getEditableMaterials === 'function') mats = viewer.getEditableMaterials() || [];
-      else { warn('getEditableMaterials no disponible; filtro shader NO aplicado'); return; }
-    } catch (e) { warn('getEditableMaterials error:', e); return; }
+  // ==========================================================================
+  // v20: FUENTES DE MATERIALES. El build publicado devuelve 0 en la API
+  // editable (tus logs v19: 'shader: 0 mat'), por eso se añade la captura
+  // de escena de vr-compat (hook de render — la escena REAL del primer
+  // render(), recorrida sin API editable):
+  //   1) getEditableMaterials() — API documentada (PC: 149 materiales).
+  //   2) VRCOMPAT.getSceneMaterials() — captura vía render.
+  // ==========================================================================
+  function getEditableMats() {
+    if (!viewer || typeof viewer.getEditableMaterials !== 'function') return null;
+    try { if (typeof viewer.setAllMaterialsEditable === 'function') viewer.setAllMaterialsEditable(); } catch (e) {}
+    var mats = null;
+    try { mats = viewer.getEditableMaterials() || null; } catch (e) { return null; }
+    // Tolerar que devuelva un mapa/objeto en lugar de array (defensivo).
+    if (mats && typeof mats === 'object' && !Array.isArray(mats) && !mats.length) {
+      var arr = [];
+      for (var k in mats) { var v = mats[k]; if (v && typeof v === 'object') arr.push(v); }
+      mats = arr;
+    }
+    if (mats && mats.length) log('getEditableMaterials ->', mats.length, 'materiales');
+    return mats && mats.length ? mats : null;
+  }
 
-    // B1: si la lista viene VACÍA (escena aún no lista), NO marcar como
-    // parcheado — se reintentará en el siguiente applyTemp.
-    if (!mats.length) {
-      log('filtro shader: 0 materiales editables (reintentando setAllMaterialsEditable + getEditableMaterials en próximos clics)');
+  function getCapturedMats() {
+    if (!window.VRCOMPAT || typeof window.VRCOMPAT.getSceneMaterials !== 'function') return [];
+    try { return window.VRCOMPAT.getSceneMaterials() || []; } catch (e) { return []; }
+  }
+
+  // Inyección GLSL en un shader concreto (compartida por el wrapper por
+  // instancia y por el hook del prototipo Material de vr-compat).
+  // Defensivo: el uniform se publica con {r,g,b} + {x,y,z} + índices para
+  // que cualquier rama de setValueV3f del three del viewer lo lea bien.
+  function filterUniformValue(c) {
+    var v = { r: c.r, g: c.g, b: c.b, x: c.r, y: c.g, z: c.b };
+    v[0] = c.r; v[1] = c.g; v[2] = c.b;
+    return v;
+  }
+
+  function injectFilterIntoShader(self, shader) {
+    if (!shader || !shader.fragmentShader) return;
+    if (shader.fragmentShader.indexOf('gl_FragColor') === -1) {
+      // B3: si el viewer compila en GLSL3 (pc_fragColor), NO inyectar.
+      warn('filtro shader: shader sin gl_FragColor (posible GLSL3); omitido');
       return;
     }
-    FILTER_PATCHED = true;
+    if (!shader.uniforms.uVRTEMP_FilterColor) {
+      shader.uniforms.uVRTEMP_FilterColor = { value: filterUniformValue(CURRENT_FILTER) };
+      // Declaración del uniform al inicio del fragment shader.
+      var header = 'uniform vec3 uVRTEMP_FilterColor;\n';
+      shader.fragmentShader = header + shader.fragmentShader;
+      // Multiplicación al final del pipeline de color (patrón LUTVR).
+      var body = 'gl_FragColor.rgb *= uVRTEMP_FilterColor;\n';
+      if (shader.fragmentShader.indexOf('#include <dithering_fragment>') !== -1) {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <dithering_fragment>',
+          '#include <dithering_fragment>\n' + body);
+      } else if (shader.fragmentShader.indexOf('#include <opaque_fragment>') !== -1) {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <opaque_fragment>',
+          '#include <opaque_fragment>\n' + body);
+      } else {
+        var li = shader.fragmentShader.lastIndexOf('}');
+        if (li !== -1) {
+          shader.fragmentShader = shader.fragmentShader.slice(0, li) + body + '\n' + shader.fragmentShader.slice(li);
+        }
+      }
+    }
+    // Dedupe: onBeforeCompile puede ejecutarse varias veces por material.
+    var already = false;
+    for (var ui = 0; ui < FILTER_UNIFORMS.length; ui++) {
+      if (FILTER_UNIFORMS[ui].uniforms === shader.uniforms) { already = true; break; }
+    }
+    if (!already) FILTER_UNIFORMS.push({ mat: self, uniforms: shader.uniforms });
+  }
 
+  // v20: handoff para vr-compat — si vr-compat envolvió el prototipo de
+  // THREE.Material (onBeforeCompile), TODA asignación del viewer en cualquier
+  // material (aunque no esté en nuestras listas) pasa por esta función.
+  window.__VRTEMP_INJECT__ = function (self, shader, renderer) {
+    try { injectFilterIntoShader(self, shader); } catch (e) { /* nunca romper compilación */ }
+  };
+
+  function patchMaterialList(mats, src) {
+    var patchedNow = 0;
     for (var i = 0; i < mats.length; i++) {
       var m = mats[i];
       if (!m || typeof m.onBeforeCompile !== 'function') continue;
@@ -248,65 +313,73 @@
         if (typeof prevOnBeforeCompile === 'function') {
           try { prevOnBeforeCompile.call(this, shader, renderer); } catch (e) {}
         }
-        if (!shader.uniforms.uVRTEMP_FilterColor) {
-          // B3: solo inyectar si el shader usa gl_FragColor (GLSL1). Si el
-          // viewer compila en GLSL3 (pc_fragColor), NO inyectar (rompería
-          // la compilación) — log + skip.
-          if (shader.fragmentShader.indexOf('gl_FragColor') === -1) {
-            warn('filtro shader: shader sin gl_FragColor (posible GLSL3); omitido');
-            return;
-          }
-          // v12: inicializar el uniform con el color ACTIVO (no blanco).
-          shader.uniforms.uVRTEMP_FilterColor = {
-            value: { r: CURRENT_FILTER.r, g: CURRENT_FILTER.g, b: CURRENT_FILTER.b }
-          };
-          // Declaración del uniform al inicio del fragment shader.
-          var header = 'uniform vec3 uVRTEMP_FilterColor;\n';
-          shader.fragmentShader = header + shader.fragmentShader;
-          // Multiplicación al final del pipeline de color (patrón LUTVR).
-          var body = 'gl_FragColor.rgb *= uVRTEMP_FilterColor;\n';
-          if (shader.fragmentShader.indexOf('#include <dithering_fragment>') !== -1) {
-            shader.fragmentShader = shader.fragmentShader.replace(
-              '#include <dithering_fragment>',
-              '#include <dithering_fragment>\n' + body);
-          } else if (shader.fragmentShader.indexOf('#include <opaque_fragment>') !== -1) {
-            shader.fragmentShader = shader.fragmentShader.replace(
-              '#include <opaque_fragment>',
-              '#include <opaque_fragment>\n' + body);
-          } else {
-            var li = shader.fragmentShader.lastIndexOf('}');
-            if (li !== -1) {
-              shader.fragmentShader = shader.fragmentShader.slice(0, li) + body + '\n' + shader.fragmentShader.slice(li);
-            }
-          }
-        }
-        // Dedupe: onBeforeCompile puede ejecutarse varias veces por material.
-        var already = false;
-        for (var ui = 0; ui < FILTER_UNIFORMS.length; ui++) {
-          if (FILTER_UNIFORMS[ui].uniforms === shader.uniforms) { already = true; break; }
-        }
-        if (!already) FILTER_UNIFORMS.push({ mat: this, uniforms: shader.uniforms });
+        injectFilterIntoShader(this, shader);
       };
 
       // B5: forzar programa único por material parcheado (patrón LUTVR).
+      // v20: key nueva (|VRTEMP20) — fuerza programas frescos tras actualizar
+      // el script (evita reutilizar el caché de programas de la v19).
       var prevCacheKey = m.customProgramCacheKey;
       m.customProgramCacheKey = function () {
         var base = '';
         try { if (typeof prevCacheKey === 'function') base = prevCacheKey.call(this); } catch (e) {}
-        return base + '|VRTEMP12';
+        return base + '|VRTEMP20';
       };
 
       try { m.needsUpdate = true; } catch (e) {}
       FILTER_PATCH_COUNT++;
+      patchedNow++;
     }
-    log('filtro shader-injection preparado en', FILTER_PATCH_COUNT, 'materiales');
+    if (patchedNow) {
+      FILTER_PATCHED = true;
+      log('filtro shader-injection preparado en', FILTER_PATCH_COUNT, 'materiales (fuente: ' + src + ')');
+    }
+    return patchedNow;
+  }
+
+  function scheduleFilterRetry() {
+    if (FILTER_RETRY_TIMER) return;
+    if (FILTER_RETRY_ATTEMPTS >= 30) return; // máx ~60s de reintentos (cada 2s)
+    FILTER_RETRY_TIMER = setTimeout(function () {
+      FILTER_RETRY_TIMER = null;
+      FILTER_RETRY_ATTEMPTS++;
+      patchMaterialsFilter();
+    }, 2000);
+  }
+
+  function patchMaterialsFilter() {
+    var mats = getEditableMats() || [];
+    var src = 'editable';
+    if (!mats.length) {
+      mats = getCapturedMats();
+      src = 'captura render';
+    }
+    if (!mats.length) {
+      if (FILTER_RETRY_ATTEMPTS === 0) {
+        log('filtro shader: 0 materiales (editable + captura) — la captura llega con el primer render; reintentando cada 2s');
+      }
+      scheduleFilterRetry();
+      return;
+    }
+    patchMaterialList(mats, src);
+    // Si la captura encuentra MÁS materiales en un rescan posterior, parchear
+    // también los nuevos (guard __vrtempPatched evita duplicados).
+    var extra = getCapturedMats();
+    if (extra.length > mats.length) patchMaterialList(extra, 'captura render (rescan)');
   }
 
   function updateFilterUniforms(c) {
+    // v20: publicar color en TODAS las representaciones ({r,g,b},{x,y,z},
+    // índices) para que cualquier rama de setValueV3f del three del viewer
+    // lea el valor correcto.
     for (var i = 0; i < FILTER_UNIFORMS.length; i++) {
       try {
         var u = FILTER_UNIFORMS[i].uniforms.uVRTEMP_FilterColor;
-        if (u) { u.value.r = c.r; u.value.g = c.g; u.value.b = c.b; }
+        if (u && u.value) {
+          u.value.r = c.r; u.value.g = c.g; u.value.b = c.b;
+          u.value.x = c.r; u.value.y = c.g; u.value.z = c.b;
+          if (u.value[0] !== undefined) { u.value[0] = c.r; u.value[1] = c.g; u.value[2] = c.b; }
+        }
       } catch (e) { /* material liberado */ }
     }
   }
@@ -327,6 +400,12 @@
     // para asegurar que los uniforms recién creados reciban el color.
     setTimeout(function () { updateFilterUniforms(CURRENT_FILTER); }, 100);
     setTimeout(function () { updateFilterUniforms(CURRENT_FILTER); }, 500);
+    // v20: la captura de escena (hook de render de vr-compat) puede llegar
+    // justo después del clic (primer render); re-intentar el parcheo tarde.
+    setTimeout(function () {
+      patchMaterialsFilter();
+      updateFilterUniforms(CURRENT_FILTER);
+    }, 800);
     // Refuerzo opcional: quad per-eye solo si la escena interna existe.
     ensureFilterReady();
     if (quad) updateQuad(p);
@@ -344,6 +423,13 @@
   // interna existe). El mecanismo principal es el shader, que no la necesita.
   function ensureFilterReady() {
     if (quad) return;
+    // v20: el quad multiplicaría DOS veces si el shader ya filtra (doble
+    // oscurecimiento: colorEscena × filtro × filtro) — solo se construye
+    // cuando el shader NO halló materiales.
+    if (FILTER_PATCH_COUNT > 0) {
+      log('filtro shader activo en', FILTER_PATCH_COUNT, 'materiales -> quad NO necesario');
+      return;
+    }
     if (!xrSession) {
       log('filtro: sin sesión XR activa -> refuerzo quad solo DENTRO del casco (shader sí aplica)');
       return;
@@ -822,8 +908,14 @@
   function ensureScene() {
     if (xrScene) return true;
     if (!viewer) return false;
+    // v20: primero la escena CAPTURADA por vr-compat (hook de render) — la
+    // escena real, sin necesidad de deepFind.
+    var cap = null;
+    if (window.VRCOMPAT && typeof window.VRCOMPAT.getSceneCapture === 'function') {
+      try { cap = window.VRCOMPAT.getSceneCapture(); } catch (e) {}
+    }
     // v14: candidatos por nombre primero, luego BFS filtrado (profundidad 10).
-    xrScene = findSceneByCandidates() || deepFind(viewer, 10);
+    xrScene = cap || findSceneByCandidates() || deepFind(viewer, 10);
     if (!xrScene) {
       if (!SCENE_SCANNED) {
         SCENE_SCANNED = true;
@@ -1016,6 +1108,32 @@
     } catch (e) { warn('keydown no registrado:', e); }
 
     watchXR();
+
+    // v20: VIGILANTE DE SESIÓN — si vr-compat ya capturó la sesión
+    // (requestSession interceptada) pero el evento sessionstart no llegó a
+    // este script, conectarse igual (si no, mandos/quad/esferas no arrancan).
+    var sessTries = 0;
+    var sessWatch = setInterval(function () {
+      if (xrSession) { clearInterval(sessWatch); return; }
+      var s = null;
+      if (window.VRCOMPAT && typeof window.VRCOMPAT.getSession === 'function') {
+        try { s = window.VRCOMPAT.getSession(); } catch (e) {}
+      }
+      if (s) { clearInterval(sessWatch); activateSession(s); }
+      else if (++sessTries > 60) clearInterval(sessWatch);
+    }, 1000);
+
+    // v20: cuando vr-compat capture la escena (primer render), re-sincronizar
+    // el filtro por si el clic ocurrió antes de que llegara la captura.
+    if (window.VRCOMPAT && typeof window.VRCOMPAT.onSceneCapture === 'function') {
+      window.VRCOMPAT.onSceneCapture(function () {
+        log('aviso captura de escena (vr-compat) -> re-sincronizando filtro');
+        patchMaterialsFilter();
+        if (activeTemp) {
+          setTimeout(function () { updateFilterUniforms(CURRENT_FILTER); }, 60);
+        }
+      });
+    }
   }
 
   // ==========================================================================
